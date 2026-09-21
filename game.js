@@ -1,4 +1,4 @@
-import { hit, getSpawnInterval } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex } from "./logic.js";
 
 // --- Setup ---
 const canvas = document.getElementById("game");
@@ -14,7 +14,7 @@ const startBtn = document.getElementById("startBtn");
 const FRAME = 48; // all character/enemy sprite frames are 48x48px
 const PLAYER_SPEED = 200; // px/sec
 const BULLET_SPEED = 400; // px/sec
-const FIRE_INTERVAL = 220; // ms between shots while firing
+const FIRE_INTERVAL = 220; // ms between auto-fired shots
 const ENEMY_SPEED = 90; // px/sec
 const HIT_RADIUS = FRAME * 0.6; // shared collision radius for bullet/enemy/player checks
 
@@ -66,6 +66,17 @@ function isDown(...names) {
   return names.some((n) => keys[n]);
 }
 
+// Random point just outside one of the four arena edges (top/right/bottom/left).
+function spawnEnemy(half) {
+  const edge = Math.floor(Math.random() * 4);
+  switch (edge) {
+    case 0: return { x: Math.random() * canvas.width, y: -half };
+    case 1: return { x: canvas.width + half, y: Math.random() * canvas.height };
+    case 2: return { x: Math.random() * canvas.width, y: canvas.height + half };
+    default: return { x: -half, y: Math.random() * canvas.height };
+  }
+}
+
 // --- Update ---
 function update(dt, elapsedMs) {
   // player movement, clamped to canvas bounds
@@ -77,28 +88,35 @@ function update(dt, elapsedMs) {
   player.x = Math.max(half, Math.min(canvas.width - half, player.x));
   player.y = Math.max(half, Math.min(canvas.height - half, player.y));
 
-  // auto-fire while Space is held
+  // auto-fire at the nearest enemy — always on, no button, Survivor.io-style
   fireAccum += dt * 1000;
-  if (isDown(" ") && fireAccum >= FIRE_INTERVAL) {
-    fireAccum = 0;
-    bullets.push({ x: player.x, y: player.y - half });
+  if (fireAccum >= FIRE_INTERVAL) {
+    const targetI = nearestIndex(player.x, player.y, enemies);
+    if (targetI !== -1) {
+      fireAccum = 0;
+      const dir = direction(player.x, player.y, enemies[targetI].x, enemies[targetI].y);
+      bullets.push({ x: player.x, y: player.y, vx: dir.x * BULLET_SPEED, vy: dir.y * BULLET_SPEED });
+    }
   }
 
-  // bullets travel straight up, despawn off-screen
+  // bullets travel in their fired direction, despawn off-screen
   for (let i = bullets.length - 1; i >= 0; i--) {
-    bullets[i].y -= BULLET_SPEED * dt;
-    if (bullets[i].y < 0) bullets.splice(i, 1);
+    bullets[i].x += bullets[i].vx * dt;
+    bullets[i].y += bullets[i].vy * dt;
+    const b = bullets[i];
+    if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) bullets.splice(i, 1);
   }
 
-  // enemies spawn along the top edge on a difficulty-ramped interval
+  // enemies spawn just outside a random edge of the arena and home toward the player
   spawnAccum += dt * 1000;
   if (spawnAccum >= getSpawnInterval(elapsedMs)) {
     spawnAccum = 0;
-    enemies.push({ x: Math.random() * (canvas.width - FRAME) + half, y: -half });
+    enemies.push(spawnEnemy(half));
   }
   for (let i = enemies.length - 1; i >= 0; i--) {
-    enemies[i].y += ENEMY_SPEED * dt;
-    if (enemies[i].y > canvas.height + half) enemies.splice(i, 1);
+    const dir = direction(enemies[i].x, enemies[i].y, player.x, player.y);
+    enemies[i].x += dir.x * ENEMY_SPEED * dt;
+    enemies[i].y += dir.y * ENEMY_SPEED * dt;
   }
 
   // bullet <-> enemy collision
