@@ -50,7 +50,10 @@ let enemies = [];
 let fireAccum = 0;
 let spawnAccum = 0;
 
+let score = 0;
+let lives = 3;
 let running = false;
+let gameOver = false;
 let startTime = 0;
 let lastTs = 0;
 
@@ -104,6 +107,8 @@ function update(dt, elapsedMs) {
       if (hit(enemies[i].x, enemies[i].y, bullets[j].x, bullets[j].y, HIT_RADIUS)) {
         enemies.splice(i, 1);
         bullets.splice(j, 1);
+        score++;
+        scoreEl.textContent = score;
         break;
       }
     }
@@ -113,6 +118,12 @@ function update(dt, elapsedMs) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     if (hit(player.x, player.y, enemies[i].x, enemies[i].y, HIT_RADIUS)) {
       enemies.splice(i, 1);
+      lives--;
+      livesEl.textContent = lives;
+      if (lives <= 0) {
+        endGame();
+        return;
+      }
     }
   }
 }
@@ -136,7 +147,7 @@ function gameLoop(ts) {
   requestAnimationFrame(gameLoop);
 }
 
-// --- Start ---
+// --- Start / game over ---
 startBtn.addEventListener("click", startGame);
 
 function startGame() {
@@ -145,8 +156,22 @@ function startGame() {
   enemies = [];
   fireAccum = 0;
   spawnAccum = 0;
+  score = 0;
+  lives = 3;
+  scoreEl.textContent = score;
+  livesEl.textContent = lives;
   running = true;
+  gameOver = false;
   startTime = performance.now();
   lastTs = startTime;
   requestAnimationFrame(gameLoop);
+}
+
+function endGame() {
+  running = false;
+  gameOver = true;
+  overlay.querySelector("h1").textContent = "GAME OVER";
+  overlay.querySelector("p").textContent = `Final score: ${score}`;
+  startBtn.textContent = "RETRY";
+  overlay.classList.remove("hidden");
 }
