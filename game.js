@@ -1,3 +1,5 @@
+import { hit, getSpawnInterval } from "./logic.js";
+
 // --- Setup ---
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -13,6 +15,8 @@ const FRAME = 48; // all character/enemy sprite frames are 48x48px
 const PLAYER_SPEED = 200; // px/sec
 const BULLET_SPEED = 400; // px/sec
 const FIRE_INTERVAL = 220; // ms between shots while firing
+const ENEMY_SPEED = 90; // px/sec
+const HIT_RADIUS = FRAME * 0.6; // shared collision radius for bullet/enemy/player checks
 
 // --- Sprite loading ---
 function loadSprite(src, frameCount) {
@@ -42,7 +46,9 @@ function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120) {
 // --- Play area ---
 const player = { x: canvas.width / 2, y: canvas.height - 80 };
 let bullets = [];
+let enemies = [];
 let fireAccum = 0;
+let spawnAccum = 0;
 
 let running = false;
 let startTime = 0;
@@ -58,7 +64,7 @@ function isDown(...names) {
 }
 
 // --- Update ---
-function update(dt) {
+function update(dt, elapsedMs) {
   // player movement, clamped to canvas bounds
   const half = FRAME / 2;
   if (isDown("ArrowLeft", "a", "A")) player.x -= PLAYER_SPEED * dt;
@@ -80,12 +86,42 @@ function update(dt) {
     bullets[i].y -= BULLET_SPEED * dt;
     if (bullets[i].y < 0) bullets.splice(i, 1);
   }
+
+  // enemies spawn along the top edge on a difficulty-ramped interval
+  spawnAccum += dt * 1000;
+  if (spawnAccum >= getSpawnInterval(elapsedMs)) {
+    spawnAccum = 0;
+    enemies.push({ x: Math.random() * (canvas.width - FRAME) + half, y: -half });
+  }
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    enemies[i].y += ENEMY_SPEED * dt;
+    if (enemies[i].y > canvas.height + half) enemies.splice(i, 1);
+  }
+
+  // bullet <-> enemy collision
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    for (let j = bullets.length - 1; j >= 0; j--) {
+      if (hit(enemies[i].x, enemies[i].y, bullets[j].x, bullets[j].y, HIT_RADIUS)) {
+        enemies.splice(i, 1);
+        bullets.splice(j, 1);
+        break;
+      }
+    }
+  }
+
+  // player <-> enemy collision
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    if (hit(player.x, player.y, enemies[i].x, enemies[i].y, HIT_RADIUS)) {
+      enemies.splice(i, 1);
+    }
+  }
 }
 
 // --- Drawing ---
 function draw(elapsedMs) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   for (const b of bullets) drawSprite(sprites.projectile, b.x, b.y, elapsedMs);
+  for (const e of enemies) drawSprite(sprites.enemy, e.x, e.y, elapsedMs);
   drawSprite(sprites.player, player.x, player.y, elapsedMs);
 }
 
@@ -94,8 +130,9 @@ function gameLoop(ts) {
   if (!running) return;
   const dt = Math.min((ts - lastTs) / 1000, 0.1); // cap to avoid a huge first-frame jump
   lastTs = ts;
-  update(dt);
-  draw(ts - startTime);
+  const elapsedMs = ts - startTime;
+  update(dt, elapsedMs);
+  draw(elapsedMs);
   requestAnimationFrame(gameLoop);
 }
 
@@ -105,7 +142,9 @@ startBtn.addEventListener("click", startGame);
 function startGame() {
   overlay.classList.add("hidden");
   bullets = [];
+  enemies = [];
   fireAccum = 0;
+  spawnAccum = 0;
   running = true;
   startTime = performance.now();
   lastTs = startTime;
