@@ -6,12 +6,31 @@ asset kit.
 
 ## Status
 
-MVP in progress — see [Milestones](../../milestones) for scope
-(core loop → content → responsive/PWA → cleanup → ads).
+Core Loop (MVP) milestone done — playable. See [Milestones](../../milestones)
+for what's next (content → responsive/PWA → cleanup → ads).
+
+## Local dev
+
+```
+docker compose up -d
+```
+
+Open `http://localhost:8181`. Arrow keys/WASD to move, Space to fire.
+
+## Tests
+
+```
+npm install
+npm test
+```
+
+Covers `logic.js` (hit detection, spawn-interval ramp) — rendering/input
+aren't unit tested, matching `koda-blast`'s precedent for anything
+DOM/Canvas-coupled.
 
 ## Stack
 
-- Vanilla JS, HTML5 Canvas
+- Vanilla JS, HTML5 Canvas (ES modules, no build step)
 - Static site, deployed as `nginx:alpine` (same pattern as `koda-blast`)
 
 ## Assets & licensing
