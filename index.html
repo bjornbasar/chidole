@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Chidole</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #0a0a0f;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    font-family: 'Courier New', monospace;
+    touch-action: none;
+    -webkit-user-select: none; user-select: none;
+  }
+  #wrap { position: relative; }
+  canvas { display: block; border: 1px solid #1a1a2e; image-rendering: pixelated; }
+  #hud {
+    display: flex; justify-content: space-between;
+    color: #8af; font-size: 14px;
+    padding: 4px 8px;
+  }
+  #overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; color: #fff;
+    background: rgba(0,0,0,0.7); z-index: 10;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h1 { font-size: 28px; color: #4af; margin-bottom: 8px; letter-spacing: 4px; }
+  #overlay p { font-size: 14px; color: #8af; margin-bottom: 16px; text-align: center; padding: 0 16px; }
+  #overlay .score-display { font-size: 24px; color: #fa4; margin-bottom: 16px; }
+  #overlay button {
+    padding: 14px 36px; font-size: 18px; font-family: inherit;
+    background: #2a2a4e; color: #4af; border: 1px solid #4af;
+    cursor: pointer; letter-spacing: 2px;
+  }
+  #overlay button:hover { background: #4af; color: #0a0a1f; }
+</style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="hud">
+      <span>SCORE: <span id="score">0</span></span>
+      <span>LIVES: <span id="lives">3</span></span>
+    </div>
+    <canvas id="game"></canvas>
+    <div id="overlay">
+      <h1>CHIDOLE</h1>
+      <p>Arrow keys / WASD to move, Space to fire</p>
+      <button id="startBtn">START</button>
+    </div>
+  </div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>
