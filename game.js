@@ -16,18 +16,18 @@ const PLAYER_SPEED = 200; // px/sec
 const BULLET_SPEED = 400; // px/sec
 const FIRE_INTERVAL = 220; // ms between auto-fired shots
 const ENEMY_SPEED = 90; // px/sec
-const HIT_RADIUS = FRAME * 0.6; // shared collision radius for bullet/enemy/player checks
+const HIT_RADIUS = FRAME * 0.35; // approximates the sprites' visible silhouette, not their full padded frame
 
 // --- Sprite loading ---
-function loadSprite(src, frameCount) {
+function loadSprite(src, frameCount, frameW = FRAME, frameH = FRAME) {
   const img = new Image();
   img.src = src;
-  return { img, frameCount, loaded: false };
+  return { img, frameCount, frameW, frameH, loaded: false };
 }
 const sprites = {
   player: loadSprite("assets/player_walk.png", 4),
   enemy: loadSprite("assets/enemy_run.png", 6),
-  projectile: loadSprite("assets/projectile.png", 1),
+  projectile: loadSprite("assets/projectile.png", 1, 10, 10),
 };
 for (const s of Object.values(sprites)) {
   s.img.onload = () => { s.loaded = true; };
@@ -35,11 +35,12 @@ for (const s of Object.values(sprites)) {
 
 function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120) {
   if (!sprite.loaded) return;
-  const frame = Math.floor(elapsedMs / frameDurationMs) % sprite.frameCount;
+  const { frameW, frameH, frameCount } = sprite;
+  const frame = Math.floor(elapsedMs / frameDurationMs) % frameCount;
   ctx.drawImage(
     sprite.img,
-    frame * FRAME, 0, FRAME, FRAME,
-    x - FRAME / 2, y - FRAME / 2, FRAME, FRAME
+    frame * frameW, 0, frameW, frameH,
+    x - frameW / 2, y - frameH / 2, frameW, frameH
   );
 }
 
