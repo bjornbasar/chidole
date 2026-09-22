@@ -135,6 +135,7 @@ let facing = "down"; // "down" | "up" | "side" — holds last direction while id
 let facingFlip = 1; // 1 = facing right, -1 = mirrored (facing left)
 let playerDying = false;
 let playerDeathStart = 0;
+let playerHitFlashUntil = 0;
 let bullets = [];
 let enemies = [];
 let fireAccum = 0;
@@ -279,6 +280,7 @@ function update(dt, elapsedMs) {
         playerDeathStart = elapsedMs;
         return;
       }
+      playerHitFlashUntil = elapsedMs + HIT_FLASH_MS;
     }
   }
 }
@@ -304,6 +306,8 @@ function draw(elapsedMs) {
   // always screen-centered; sprite/flip follow the last movement direction
   if (playerDying) {
     drawSprite(playerDeathSprites[facing], canvas.width / 2, canvas.height / 2, elapsedMs - playerDeathStart, DEATH_FRAME_MS, facingFlip);
+  } else if (elapsedMs < playerHitFlashUntil) {
+    drawSprite(playerDeathSprites[facing], canvas.width / 2, canvas.height / 2, 0, DEATH_FRAME_MS, facingFlip); // frame 0 = flinch pose, held static
   } else {
     drawSprite(playerSprites[facing], canvas.width / 2, canvas.height / 2, elapsedMs, 120, facingFlip);
   }
@@ -330,6 +334,7 @@ function startGame() {
   facing = "down";
   facingFlip = 1;
   playerDying = false;
+  playerHitFlashUntil = 0;
   bullets = [];
   enemies = [];
   fireAccum = 0;
