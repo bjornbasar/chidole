@@ -45,13 +45,30 @@ for (const s of Object.values(playerSprites)) {
   s.img.onload = () => { s.loaded = true; };
 }
 
+const playerDeathSprites = {
+  down: loadSprite("assets/player_death_down.png", 4),
+  side: loadSprite("assets/player_death_side.png", 4),
+  up: loadSprite("assets/player_death_up.png", 4),
+};
+for (const s of Object.values(playerDeathSprites)) {
+  s.img.onload = () => { s.loaded = true; };
+}
+
 const ENEMY_TYPES = 6;
 const enemySprites = [];
+const enemyDeathSprites = [];
 for (let i = 1; i <= ENEMY_TYPES; i++) {
   const s = loadSprite(`assets/enemy${i}_run.png`, 6);
   s.img.onload = () => { s.loaded = true; };
   enemySprites.push(s);
+
+  const d = loadSprite(`assets/enemy${i}_death.png`, 4);
+  d.img.onload = () => { d.loaded = true; };
+  enemyDeathSprites.push(d);
 }
+
+const DEATH_FRAME_MS = 120;
+const DEATH_TOTAL_MS = DEATH_FRAME_MS * 4;
 
 // Per-type stats, alternating fast/fragile vs. slow/tanky so the roster feels
 // different to fight, not just differently colored.
@@ -115,6 +132,8 @@ function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120, flip = 1) {
 const player = { x: 0, y: 0 };
 let facing = "down"; // "down" | "up" | "side" — holds last direction while idle
 let facingFlip = 1; // 1 = facing right, -1 = mirrored (facing left)
+let playerDying = false;
+let playerDeathStart = 0;
 let bullets = [];
 let enemies = [];
 let fireAccum = 0;
@@ -151,11 +170,17 @@ function spawnEnemy(half) {
     case 2: pos = { x: player.x + (Math.random() * canvas.width - halfW), y: player.y + halfH + half }; break;
     default: pos = { x: player.x - halfW - half, y: player.y + (Math.random() * canvas.height - halfH) };
   }
-  return { ...pos, typeIndex, hp: ENEMY_STATS[typeIndex].hp };
+  return { ...pos, typeIndex, hp: ENEMY_STATS[typeIndex].hp, dying: false, deathStart: 0 };
 }
 
 // --- Update ---
 function update(dt, elapsedMs) {
+  // player death animation plays out fully before game-over shows
+  if (playerDying) {
+    if (elapsedMs - playerDeathStart >= DEATH_TOTAL_MS) endGame();
+    return;
+  }
+
   // player movement — moves the world-space camera, since the player sprite
   // itself is always drawn at screen center. Open world: no bounds.
   const half = FRAME / 2;
@@ -206,20 +231,30 @@ function update(dt, elapsedMs) {
     enemies.push(spawnEnemy(half));
   }
   for (let i = enemies.length - 1; i >= 0; i--) {
+    if (enemies[i].dying) continue; // corpses hold position during their death animation
     const speed = ENEMY_SPEED * ENEMY_STATS[enemies[i].typeIndex].speedMul;
     const dir = direction(enemies[i].x, enemies[i].y, player.x, player.y);
     enemies[i].x += dir.x * speed * dt;
     enemies[i].y += dir.y * speed * dt;
   }
 
+  // remove enemies once their death animation has played out
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    if (enemies[i].dying && elapsedMs - enemies[i].deathStart >= DEATH_TOTAL_MS) {
+      enemies.splice(i, 1);
+    }
+  }
+
   // bullet <-> enemy collision — each hit costs 1 HP, tankier types take more shots
   for (let i = enemies.length - 1; i >= 0; i--) {
+    if (enemies[i].dying) continue;
     for (let j = bullets.length - 1; j >= 0; j--) {
       if (hit(enemies[i].x, enemies[i].y, bullets[j].x, bullets[j].y, HIT_RADIUS)) {
         bullets.splice(j, 1);
         enemies[i].hp--;
         if (enemies[i].hp <= 0) {
-          enemies.splice(i, 1);
+          enemies[i].dying = true;
+          enemies[i].deathStart = elapsedMs;
           score++;
           scoreEl.textContent = score;
         }
@@ -230,12 +265,15 @@ function update(dt, elapsedMs) {
 
   // player <-> enemy collision
   for (let i = enemies.length - 1; i >= 0; i--) {
+    if (enemies[i].dying) continue;
     if (hit(player.x, player.y, enemies[i].x, enemies[i].y, HIT_RADIUS)) {
-      enemies.splice(i, 1);
+      enemies[i].dying = true;
+      enemies[i].deathStart = elapsedMs;
       lives--;
       setLivesDisplay(lives);
       if (lives <= 0) {
-        endGame();
+        playerDying = true;
+        playerDeathStart = elapsedMs;
         return;
       }
     }
@@ -252,10 +290,18 @@ function draw(elapsedMs) {
   }
   for (const e of enemies) {
     const s = toScreen(e.x, e.y);
-    drawSprite(enemySprites[e.typeIndex], s.x, s.y, elapsedMs);
+    if (e.dying) {
+      drawSprite(enemyDeathSprites[e.typeIndex], s.x, s.y, elapsedMs - e.deathStart, DEATH_FRAME_MS);
+    } else {
+      drawSprite(enemySprites[e.typeIndex], s.x, s.y, elapsedMs);
+    }
   }
   // always screen-centered; sprite/flip follow the last movement direction
-  drawSprite(playerSprites[facing], canvas.width / 2, canvas.height / 2, elapsedMs, 120, facingFlip);
+  if (playerDying) {
+    drawSprite(playerDeathSprites[facing], canvas.width / 2, canvas.height / 2, elapsedMs - playerDeathStart, DEATH_FRAME_MS, facingFlip);
+  } else {
+    drawSprite(playerSprites[facing], canvas.width / 2, canvas.height / 2, elapsedMs, 120, facingFlip);
+  }
 }
 
 // --- Loop ---
@@ -278,6 +324,7 @@ function startGame() {
   player.y = 0;
   facing = "down";
   facingFlip = 1;
+  playerDying = false;
   bullets = [];
   enemies = [];
   fireAccum = 0;
