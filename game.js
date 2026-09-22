@@ -70,6 +70,7 @@ for (let i = 1; i <= ENEMY_TYPES; i++) {
 const DEATH_FRAME_MS = 120;
 const DEATH_TOTAL_MS = DEATH_FRAME_MS * 4;
 const HIT_FLASH_MS = 120; // non-lethal hits briefly show the death sprite's frame 0 (a "flinch" pose)
+const PLAYER_INVULN_MS = 800; // brief i-frames after taking a hit, so a cluster can't drain lives in one frame
 
 // Per-type stats, alternating fast/fragile vs. slow/tanky so the roster feels
 // different to fight, not just differently colored.
@@ -136,6 +137,7 @@ let facingFlip = 1; // 1 = facing right, -1 = mirrored (facing left)
 let playerDying = false;
 let playerDeathStart = 0;
 let playerHitFlashUntil = 0;
+let playerInvulnUntil = 0;
 let bullets = [];
 let enemies = [];
 let fireAccum = 0;
@@ -267,20 +269,25 @@ function update(dt, elapsedMs) {
     }
   }
 
-  // player <-> enemy collision
-  for (let i = enemies.length - 1; i >= 0; i--) {
-    if (enemies[i].dying) continue;
-    if (hit(player.x, player.y, enemies[i].x, enemies[i].y, HIT_RADIUS)) {
-      enemies[i].dying = true;
-      enemies[i].deathStart = elapsedMs;
-      lives--;
-      setLivesDisplay(lives);
-      if (lives <= 0) {
-        playerDying = true;
-        playerDeathStart = elapsedMs;
-        return;
+  // player <-> enemy collision — capped at one hit per invuln window so a
+  // cluster of enemies can't drain multiple lives in a single frame
+  if (elapsedMs >= playerInvulnUntil) {
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      if (enemies[i].dying) continue;
+      if (hit(player.x, player.y, enemies[i].x, enemies[i].y, HIT_RADIUS)) {
+        enemies[i].dying = true;
+        enemies[i].deathStart = elapsedMs;
+        lives--;
+        setLivesDisplay(lives);
+        playerInvulnUntil = elapsedMs + PLAYER_INVULN_MS;
+        if (lives <= 0) {
+          playerDying = true;
+          playerDeathStart = elapsedMs;
+          return;
+        }
+        playerHitFlashUntil = elapsedMs + HIT_FLASH_MS;
+        break;
       }
-      playerHitFlashUntil = elapsedMs + HIT_FLASH_MS;
     }
   }
 }
@@ -306,10 +313,16 @@ function draw(elapsedMs) {
   // always screen-centered; sprite/flip follow the last movement direction
   if (playerDying) {
     drawSprite(playerDeathSprites[facing], canvas.width / 2, canvas.height / 2, elapsedMs - playerDeathStart, DEATH_FRAME_MS, facingFlip);
-  } else if (elapsedMs < playerHitFlashUntil) {
-    drawSprite(playerDeathSprites[facing], canvas.width / 2, canvas.height / 2, 0, DEATH_FRAME_MS, facingFlip); // frame 0 = flinch pose, held static
   } else {
-    drawSprite(playerSprites[facing], canvas.width / 2, canvas.height / 2, elapsedMs, 120, facingFlip);
+    // flicker for the remaining invuln window so it's visible why overlapping enemies aren't costing more lives
+    const invulnRemaining = playerInvulnUntil - elapsedMs;
+    ctx.globalAlpha = invulnRemaining > 0 && Math.floor(elapsedMs / 100) % 2 === 0 ? 0.4 : 1;
+    if (elapsedMs < playerHitFlashUntil) {
+      drawSprite(playerDeathSprites[facing], canvas.width / 2, canvas.height / 2, 0, DEATH_FRAME_MS, facingFlip); // frame 0 = flinch pose, held static
+    } else {
+      drawSprite(playerSprites[facing], canvas.width / 2, canvas.height / 2, elapsedMs, 120, facingFlip);
+    }
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -335,6 +348,7 @@ function startGame() {
   facingFlip = 1;
   playerDying = false;
   playerHitFlashUntil = 0;
+  playerInvulnUntil = 0;
   bullets = [];
   enemies = [];
   fireAccum = 0;
