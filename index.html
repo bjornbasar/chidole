@@ -38,11 +38,13 @@
   #overlay p { font-size: 14px; color: #8af; margin-bottom: 16px; text-align: center; padding: 0 16px; }
   #overlay .score-display { font-size: 24px; color: #fa4; margin-bottom: 16px; }
   #overlay button {
-    padding: 14px 36px; font-size: 18px; font-family: inherit;
-    background: #2a2a4e; color: #4af; border: 1px solid #4af;
-    cursor: pointer; letter-spacing: 2px;
+    width: 128px; height: 128px; font-size: 16px; font-family: inherit;
+    color: #fff; text-shadow: 1px 1px 2px #002;
+    border: none; background: url("assets/button_normal.png") center / contain no-repeat;
+    image-rendering: pixelated; cursor: pointer; letter-spacing: 2px;
   }
-  #overlay button:hover { background: #4af; color: #0a0a1f; }
+  #overlay button:hover { background-image: url("assets/button_light.png"); }
+  #overlay button:active { background-image: url("assets/button_dark.png"); }
 </style>
 </head>
 <body>
