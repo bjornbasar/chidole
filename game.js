@@ -43,18 +43,40 @@ for (let i = 1; i <= ENEMY_TYPES; i++) {
   enemySprites.push(s);
 }
 
+// Per-type stats, alternating fast/fragile vs. slow/tanky so the roster feels
+// different to fight, not just differently colored.
+const ENEMY_STATS = [
+  { hp: 1, speedMul: 1.3 },
+  { hp: 2, speedMul: 1.0 },
+  { hp: 1, speedMul: 1.15 },
+  { hp: 3, speedMul: 0.8 },
+  { hp: 2, speedMul: 1.0 },
+  { hp: 4, speedMul: 0.6 },
+];
+
 const floorTile = new Image();
 let floorTileLoaded = false;
 floorTile.onload = () => { floorTileLoaded = true; };
 floorTile.src = "assets/floor_tile.png";
 
+// The world scrolls under a screen-centered player: floor tiles are drawn on
+// a world-space grid, offset into screen space by the camera (player) position.
 function drawFloor() {
   if (!floorTileLoaded) return;
-  for (let y = 0; y < canvas.height; y += TILE) {
-    for (let x = 0; x < canvas.width; x += TILE) {
-      ctx.drawImage(floorTile, x, y, TILE, TILE);
+  const startWorldX = Math.floor((player.x - canvas.width / 2) / TILE) * TILE;
+  const startWorldY = Math.floor((player.y - canvas.height / 2) / TILE) * TILE;
+  for (let wy = startWorldY; wy < player.y + canvas.height / 2; wy += TILE) {
+    for (let wx = startWorldX; wx < player.x + canvas.width / 2; wx += TILE) {
+      const s = toScreen(wx, wy);
+      ctx.drawImage(floorTile, s.x, s.y, TILE, TILE);
     }
   }
+}
+
+// World-space position -> screen-space position, given the player (camera) is
+// always drawn at the center of the canvas.
+function toScreen(worldX, worldY) {
+  return { x: worldX - player.x + canvas.width / 2, y: worldY - player.y + canvas.height / 2 };
 }
 
 function setLivesDisplay(n) {
@@ -73,7 +95,10 @@ function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120) {
 }
 
 // --- Play area ---
-const player = { x: canvas.width / 2, y: canvas.height - 80 };
+// player.x/y is the player's WORLD position (also the camera position, since
+// the player sprite is always drawn at screen center). Enemies/bullets are
+// world-space too; only draw() converts to screen space.
+const player = { x: 0, y: 0 };
 let bullets = [];
 let enemies = [];
 let fireAccum = 0;
@@ -95,31 +120,33 @@ function isDown(...names) {
   return names.some((n) => keys[n]);
 }
 
-// Random point just outside one of the four arena edges (top/right/bottom/left),
-// with a random enemy type (sprite index) for visual variety.
+// Random world-space point just outside one of the four edges of the current
+// viewport (relative to the player, since the world scrolls with them), with
+// a random enemy type (sprite index) for visual variety.
 function spawnEnemy(half) {
   const edge = Math.floor(Math.random() * 4);
   const typeIndex = Math.floor(Math.random() * ENEMY_TYPES);
+  const halfW = canvas.width / 2;
+  const halfH = canvas.height / 2;
   let pos;
   switch (edge) {
-    case 0: pos = { x: Math.random() * canvas.width, y: -half }; break;
-    case 1: pos = { x: canvas.width + half, y: Math.random() * canvas.height }; break;
-    case 2: pos = { x: Math.random() * canvas.width, y: canvas.height + half }; break;
-    default: pos = { x: -half, y: Math.random() * canvas.height };
+    case 0: pos = { x: player.x + (Math.random() * canvas.width - halfW), y: player.y - halfH - half }; break;
+    case 1: pos = { x: player.x + halfW + half, y: player.y + (Math.random() * canvas.height - halfH) }; break;
+    case 2: pos = { x: player.x + (Math.random() * canvas.width - halfW), y: player.y + halfH + half }; break;
+    default: pos = { x: player.x - halfW - half, y: player.y + (Math.random() * canvas.height - halfH) };
   }
-  return { ...pos, typeIndex };
+  return { ...pos, typeIndex, hp: ENEMY_STATS[typeIndex].hp };
 }
 
 // --- Update ---
 function update(dt, elapsedMs) {
-  // player movement, clamped to canvas bounds
+  // player movement — moves the world-space camera, since the player sprite
+  // itself is always drawn at screen center. Open world: no bounds.
   const half = FRAME / 2;
   if (isDown("ArrowLeft", "a", "A")) player.x -= PLAYER_SPEED * dt;
   if (isDown("ArrowRight", "d", "D")) player.x += PLAYER_SPEED * dt;
   if (isDown("ArrowUp", "w", "W")) player.y -= PLAYER_SPEED * dt;
   if (isDown("ArrowDown", "s", "S")) player.y += PLAYER_SPEED * dt;
-  player.x = Math.max(half, Math.min(canvas.width - half, player.x));
-  player.y = Math.max(half, Math.min(canvas.height - half, player.y));
 
   // auto-fire at the nearest enemy — always on, no button, Survivor.io-style
   fireAccum += dt * 1000;
@@ -132,12 +159,14 @@ function update(dt, elapsedMs) {
     }
   }
 
-  // bullets travel in their fired direction, despawn off-screen
+  // bullets travel in their fired direction, despawn once off-viewport
   for (let i = bullets.length - 1; i >= 0; i--) {
     bullets[i].x += bullets[i].vx * dt;
     bullets[i].y += bullets[i].vy * dt;
     const b = bullets[i];
-    if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) bullets.splice(i, 1);
+    if (Math.abs(b.x - player.x) > canvas.width / 2 + half || Math.abs(b.y - player.y) > canvas.height / 2 + half) {
+      bullets.splice(i, 1);
+    }
   }
 
   // enemies spawn just outside a random edge of the arena and home toward the player
@@ -147,19 +176,23 @@ function update(dt, elapsedMs) {
     enemies.push(spawnEnemy(half));
   }
   for (let i = enemies.length - 1; i >= 0; i--) {
+    const speed = ENEMY_SPEED * ENEMY_STATS[enemies[i].typeIndex].speedMul;
     const dir = direction(enemies[i].x, enemies[i].y, player.x, player.y);
-    enemies[i].x += dir.x * ENEMY_SPEED * dt;
-    enemies[i].y += dir.y * ENEMY_SPEED * dt;
+    enemies[i].x += dir.x * speed * dt;
+    enemies[i].y += dir.y * speed * dt;
   }
 
-  // bullet <-> enemy collision
+  // bullet <-> enemy collision — each hit costs 1 HP, tankier types take more shots
   for (let i = enemies.length - 1; i >= 0; i--) {
     for (let j = bullets.length - 1; j >= 0; j--) {
       if (hit(enemies[i].x, enemies[i].y, bullets[j].x, bullets[j].y, HIT_RADIUS)) {
-        enemies.splice(i, 1);
         bullets.splice(j, 1);
-        score++;
-        scoreEl.textContent = score;
+        enemies[i].hp--;
+        if (enemies[i].hp <= 0) {
+          enemies.splice(i, 1);
+          score++;
+          scoreEl.textContent = score;
+        }
         break;
       }
     }
@@ -183,9 +216,15 @@ function update(dt, elapsedMs) {
 function draw(elapsedMs) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawFloor();
-  for (const b of bullets) drawSprite(sprites.projectile, b.x, b.y, elapsedMs);
-  for (const e of enemies) drawSprite(enemySprites[e.typeIndex], e.x, e.y, elapsedMs);
-  drawSprite(sprites.player, player.x, player.y, elapsedMs);
+  for (const b of bullets) {
+    const s = toScreen(b.x, b.y);
+    drawSprite(sprites.projectile, s.x, s.y, elapsedMs);
+  }
+  for (const e of enemies) {
+    const s = toScreen(e.x, e.y);
+    drawSprite(enemySprites[e.typeIndex], s.x, s.y, elapsedMs);
+  }
+  drawSprite(sprites.player, canvas.width / 2, canvas.height / 2, elapsedMs); // always screen-centered
 }
 
 // --- Loop ---
@@ -204,6 +243,8 @@ startBtn.addEventListener("click", startGame);
 
 function startGame() {
   overlay.classList.add("hidden");
+  player.x = 0;
+  player.y = 0;
   bullets = [];
   enemies = [];
   fireAccum = 0;
