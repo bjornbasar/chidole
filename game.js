@@ -69,6 +69,7 @@ for (let i = 1; i <= ENEMY_TYPES; i++) {
 
 const DEATH_FRAME_MS = 120;
 const DEATH_TOTAL_MS = DEATH_FRAME_MS * 4;
+const HIT_FLASH_MS = 120; // non-lethal hits briefly show the death sprite's frame 0 (a "flinch" pose)
 
 // Per-type stats, alternating fast/fragile vs. slow/tanky so the roster feels
 // different to fight, not just differently colored.
@@ -170,7 +171,7 @@ function spawnEnemy(half) {
     case 2: pos = { x: player.x + (Math.random() * canvas.width - halfW), y: player.y + halfH + half }; break;
     default: pos = { x: player.x - halfW - half, y: player.y + (Math.random() * canvas.height - halfH) };
   }
-  return { ...pos, typeIndex, hp: ENEMY_STATS[typeIndex].hp, dying: false, deathStart: 0 };
+  return { ...pos, typeIndex, hp: ENEMY_STATS[typeIndex].hp, dying: false, deathStart: 0, hitFlashUntil: 0 };
 }
 
 // --- Update ---
@@ -257,6 +258,8 @@ function update(dt, elapsedMs) {
           enemies[i].deathStart = elapsedMs;
           score++;
           scoreEl.textContent = score;
+        } else {
+          enemies[i].hitFlashUntil = elapsedMs + HIT_FLASH_MS;
         }
         break;
       }
@@ -292,6 +295,8 @@ function draw(elapsedMs) {
     const s = toScreen(e.x, e.y);
     if (e.dying) {
       drawSprite(enemyDeathSprites[e.typeIndex], s.x, s.y, elapsedMs - e.deathStart, DEATH_FRAME_MS);
+    } else if (elapsedMs < e.hitFlashUntil) {
+      drawSprite(enemyDeathSprites[e.typeIndex], s.x, s.y, 0); // frame 0 = flinch pose, held static
     } else {
       drawSprite(enemySprites[e.typeIndex], s.x, s.y, elapsedMs);
     }
