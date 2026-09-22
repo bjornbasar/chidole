@@ -42,15 +42,24 @@ export function nearestIndex(px, py, entities) {
   return best;
 }
 
-// Picks an index from `weights` proportional to its weight, given a uniform
-// random value in [0,1) (caller passes Math.random()). Kept separate from
-// Math.random() itself so the selection logic is deterministic and testable.
-export function weightedIndex(rand, weights) {
-  const total = weights.reduce((a, b) => a + b, 0);
-  let target = rand * total;
-  for (let i = 0; i < weights.length; i++) {
-    target -= weights[i];
-    if (target < 0) return i;
+// Tiered spawn cadence: mostly "basic", escalating to "extra" after a
+// 3-6-spawn basic streak, escalating further to "tank" after a 4-5-escalation
+// extra streak. Counts/thresholds are explicit state so this stays pure -
+// the caller rolls the next thresholds (Math.random()-derived) and passes
+// them in; they're only consumed when a reset actually happens this call.
+export function advanceSpawnTier(state, nextBasicTarget, nextExtraTarget) {
+  let { basicCount, basicTarget, extraCount, extraTarget } = state;
+  basicCount++;
+  if (basicCount < basicTarget) {
+    return { tier: "basic", state: { basicCount, basicTarget, extraCount, extraTarget } };
   }
-  return weights.length - 1; // floating-point edge case at rand ~= 1
+  basicCount = 0;
+  basicTarget = nextBasicTarget;
+  extraCount++;
+  if (extraCount < extraTarget) {
+    return { tier: "extra", state: { basicCount, basicTarget, extraCount, extraTarget } };
+  }
+  extraCount = 0;
+  extraTarget = nextExtraTarget;
+  return { tier: "tank", state: { basicCount, basicTarget, extraCount, extraTarget } };
 }

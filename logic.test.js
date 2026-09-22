@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hit, getSpawnInterval, direction, nearestIndex, weightedIndex } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier } from "./logic.js";
 
 describe("hit", () => {
   it("is true when within threshold", () => {
@@ -60,18 +60,49 @@ describe("nearestIndex", () => {
   });
 });
 
-describe("weightedIndex", () => {
-  it("picks the first bucket for a low rand value", () => {
-    expect(weightedIndex(0, [3, 2, 1])).toBe(0);
+describe("advanceSpawnTier", () => {
+  it("stays basic until the basic streak target is reached", () => {
+    let state = { basicCount: 0, basicTarget: 3, extraCount: 0, extraTarget: 2 };
+    let r = advanceSpawnTier(state, 4, 2);
+    expect(r.tier).toBe("basic");
+    state = r.state;
+    r = advanceSpawnTier(state, 4, 2);
+    expect(r.tier).toBe("basic");
   });
 
-  it("picks the last bucket for a rand value near 1", () => {
-    expect(weightedIndex(0.999, [3, 2, 1])).toBe(2);
+  it("escalates to extra once the basic streak is hit, and resets the basic counter", () => {
+    let state = { basicCount: 2, basicTarget: 3, extraCount: 0, extraTarget: 2 };
+    const r = advanceSpawnTier(state, 4, 2);
+    expect(r.tier).toBe("extra");
+    expect(r.state.basicCount).toBe(0);
+    expect(r.state.basicTarget).toBe(4); // adopted the rolled next target
+    expect(r.state.extraCount).toBe(1);
   });
 
-  it("respects weight proportions at the boundaries", () => {
-    // weights [3,2,1], total 6: bucket 0 covers [0, 0.5), bucket 1 covers [0.5, 0.833)
-    expect(weightedIndex(0.49, [3, 2, 1])).toBe(0);
-    expect(weightedIndex(0.51, [3, 2, 1])).toBe(1);
+  it("escalates to tank once the extra streak is hit, and resets both counters", () => {
+    // one basic streak away from triggering extra #2, which hits extraTarget=2
+    let state = { basicCount: 2, basicTarget: 3, extraCount: 1, extraTarget: 2 };
+    const r = advanceSpawnTier(state, 5, 6);
+    expect(r.tier).toBe("tank");
+    expect(r.state.basicCount).toBe(0);
+    expect(r.state.basicTarget).toBe(5);
+    expect(r.state.extraCount).toBe(0);
+    expect(r.state.extraTarget).toBe(6);
+  });
+
+  it("runs a full basic->extra->basic->tank cascade across repeated calls", () => {
+    let state = { basicCount: 0, basicTarget: 3, extraCount: 0, extraTarget: 2 };
+    const tiers = [];
+    const nextBasics = [4, 5]; // rolled targets to use on each basic-streak reset
+    const nextExtras = [3]; // rolled target to use on the extra-streak reset
+    let bi = 0;
+    for (let i = 0; i < 7; i++) {
+      const r = advanceSpawnTier(state, nextBasics[bi] ?? 4, nextExtras[0]);
+      if (r.tier === "extra" || r.tier === "tank") bi++;
+      tiers.push(r.tier);
+      state = r.state;
+    }
+    // basicTarget=3: basic,basic,extra(reset->4) / basic,basic,basic,tank(extraTarget=2 hit)
+    expect(tiers).toEqual(["basic", "basic", "extra", "basic", "basic", "basic", "tank"]);
   });
 });

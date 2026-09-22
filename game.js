@@ -1,4 +1,4 @@
-import { hit, getSpawnInterval, direction, nearestIndex, weightedIndex } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier } from "./logic.js";
 
 // --- Setup ---
 const canvas = document.getElementById("game");
@@ -82,8 +82,12 @@ const ENEMY_STATS = [
   BASIC, EXTRA, TANK, // green family: types 1, 2, 3
   BASIC, EXTRA, TANK, // pink family: types 4, 5, 6
 ];
-// Rarer as the tier gets tougher — basic 3x as likely to spawn as tank.
-const ENEMY_SPAWN_WEIGHTS = [3, 2, 1, 3, 2, 1];
+// Type index pool per tier — a family (green/pink) is picked at random
+// within whichever tier advanceSpawnTier() calls for.
+const TIER_TYPE_INDICES = { basic: [0, 3], extra: [1, 4], tank: [2, 5] };
+
+function randomBasicTarget() { return 3 + Math.floor(Math.random() * 4); } // 3-6
+function randomExtraTarget() { return 4 + Math.floor(Math.random() * 2); } // 4-5
 
 const floorTile = new Image();
 let floorTileLoaded = false;
@@ -144,6 +148,7 @@ let bullets = [];
 let enemies = [];
 let fireAccum = 0;
 let spawnAccum = 0;
+let spawnTierState = { basicCount: 0, basicTarget: randomBasicTarget(), extraCount: 0, extraTarget: randomExtraTarget() };
 
 let score = 0;
 let lives = MAX_LIVES;
@@ -194,7 +199,10 @@ window.addEventListener("mouseup", () => { mouseDown = false; });
 // a random enemy type (sprite index) for visual variety.
 function spawnEnemy(half) {
   const edge = Math.floor(Math.random() * 4);
-  const typeIndex = weightedIndex(Math.random(), ENEMY_SPAWN_WEIGHTS);
+  const { tier, state } = advanceSpawnTier(spawnTierState, randomBasicTarget(), randomExtraTarget());
+  spawnTierState = state;
+  const pool = TIER_TYPE_INDICES[tier];
+  const typeIndex = pool[Math.floor(Math.random() * pool.length)];
   const halfW = canvas.width / 2;
   const halfH = canvas.height / 2;
   let pos;
@@ -389,6 +397,7 @@ function startGame() {
   enemies = [];
   fireAccum = 0;
   spawnAccum = 0;
+  spawnTierState = { basicCount: 0, basicTarget: randomBasicTarget(), extraCount: 0, extraTarget: randomExtraTarget() };
   score = 0;
   lives = MAX_LIVES;
   scoreEl.textContent = score;
