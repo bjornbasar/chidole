@@ -28,10 +28,20 @@ function loadSprite(src, frameCount, frameW = FRAME, frameH = FRAME) {
   return { img, frameCount, frameW, frameH, loaded: false };
 }
 const sprites = {
-  player: loadSprite("assets/player_walk.png", 4),
   projectile: loadSprite("assets/projectile.png", 1, 10, 10),
 };
 for (const s of Object.values(sprites)) {
+  s.img.onload = () => { s.loaded = true; };
+}
+
+// The kit ships 3 directional player sprites (down/side/up); "side" is
+// mirrored horizontally for left vs. right instead of needing a 4th sprite.
+const playerSprites = {
+  down: loadSprite("assets/player_walk_down.png", 4),
+  side: loadSprite("assets/player_walk_side.png", 4),
+  up: loadSprite("assets/player_walk_up.png", 4),
+};
+for (const s of Object.values(playerSprites)) {
   s.img.onload = () => { s.loaded = true; };
 }
 
@@ -83,15 +93,19 @@ function setLivesDisplay(n) {
   hpFillEl.style.transform = `scaleX(${Math.max(0, n) / MAX_LIVES})`;
 }
 
-function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120) {
+function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120, flip = 1) {
   if (!sprite.loaded) return;
   const { frameW, frameH, frameCount } = sprite;
   const frame = Math.floor(elapsedMs / frameDurationMs) % frameCount;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(flip, 1);
   ctx.drawImage(
     sprite.img,
     frame * frameW, 0, frameW, frameH,
-    x - frameW / 2, y - frameH / 2, frameW, frameH
+    -frameW / 2, -frameH / 2, frameW, frameH
   );
+  ctx.restore();
 }
 
 // --- Play area ---
@@ -99,6 +113,8 @@ function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120) {
 // the player sprite is always drawn at screen center). Enemies/bullets are
 // world-space too; only draw() converts to screen space.
 const player = { x: 0, y: 0 };
+let facing = "down"; // "down" | "up" | "side" — holds last direction while idle
+let facingFlip = 1; // 1 = facing right, -1 = mirrored (facing left)
 let bullets = [];
 let enemies = [];
 let fireAccum = 0;
@@ -143,10 +159,24 @@ function update(dt, elapsedMs) {
   // player movement — moves the world-space camera, since the player sprite
   // itself is always drawn at screen center. Open world: no bounds.
   const half = FRAME / 2;
-  if (isDown("ArrowLeft", "a", "A")) player.x -= PLAYER_SPEED * dt;
-  if (isDown("ArrowRight", "d", "D")) player.x += PLAYER_SPEED * dt;
-  if (isDown("ArrowUp", "w", "W")) player.y -= PLAYER_SPEED * dt;
-  if (isDown("ArrowDown", "s", "S")) player.y += PLAYER_SPEED * dt;
+  let dx = 0;
+  let dy = 0;
+  if (isDown("ArrowLeft", "a", "A")) dx -= 1;
+  if (isDown("ArrowRight", "d", "D")) dx += 1;
+  if (isDown("ArrowUp", "w", "W")) dy -= 1;
+  if (isDown("ArrowDown", "s", "S")) dy += 1;
+  player.x += dx * PLAYER_SPEED * dt;
+  player.y += dy * PLAYER_SPEED * dt;
+
+  // facing follows the dominant movement axis; holds its last value while idle
+  if (dx !== 0 || dy !== 0) {
+    if (Math.abs(dy) >= Math.abs(dx)) {
+      facing = dy < 0 ? "up" : "down";
+    } else {
+      facing = "side";
+      facingFlip = dx < 0 ? -1 : 1;
+    }
+  }
 
   // auto-fire at the nearest enemy — always on, no button, Survivor.io-style
   fireAccum += dt * 1000;
@@ -224,7 +254,8 @@ function draw(elapsedMs) {
     const s = toScreen(e.x, e.y);
     drawSprite(enemySprites[e.typeIndex], s.x, s.y, elapsedMs);
   }
-  drawSprite(sprites.player, canvas.width / 2, canvas.height / 2, elapsedMs); // always screen-centered
+  // always screen-centered; sprite/flip follow the last movement direction
+  drawSprite(playerSprites[facing], canvas.width / 2, canvas.height / 2, elapsedMs, 120, facingFlip);
 }
 
 // --- Loop ---
@@ -245,6 +276,8 @@ function startGame() {
   overlay.classList.add("hidden");
   player.x = 0;
   player.y = 0;
+  facing = "down";
+  facingFlip = 1;
   bullets = [];
   enemies = [];
   fireAccum = 0;
