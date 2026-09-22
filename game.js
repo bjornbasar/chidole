@@ -1,4 +1,4 @@
-import { hit, getSpawnInterval, direction, nearestIndex } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, weightedIndex } from "./logic.js";
 
 // --- Setup ---
 const canvas = document.getElementById("game");
@@ -82,6 +82,8 @@ const ENEMY_STATS = [
   BASIC, EXTRA, TANK, // green family: types 1, 2, 3
   BASIC, EXTRA, TANK, // pink family: types 4, 5, 6
 ];
+// Rarer as the tier gets tougher — basic 3x as likely to spawn as tank.
+const ENEMY_SPAWN_WEIGHTS = [3, 2, 1, 3, 2, 1];
 
 const floorTile = new Image();
 let floorTileLoaded = false;
@@ -192,7 +194,7 @@ window.addEventListener("mouseup", () => { mouseDown = false; });
 // a random enemy type (sprite index) for visual variety.
 function spawnEnemy(half) {
   const edge = Math.floor(Math.random() * 4);
-  const typeIndex = Math.floor(Math.random() * ENEMY_TYPES);
+  const typeIndex = weightedIndex(Math.random(), ENEMY_SPAWN_WEIGHTS);
   const halfW = canvas.width / 2;
   const halfH = canvas.height / 2;
   let pos;

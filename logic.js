@@ -41,3 +41,16 @@ export function nearestIndex(px, py, entities) {
   }
   return best;
 }
+
+// Picks an index from `weights` proportional to its weight, given a uniform
+// random value in [0,1) (caller passes Math.random()). Kept separate from
+// Math.random() itself so the selection logic is deterministic and testable.
+export function weightedIndex(rand, weights) {
+  const total = weights.reduce((a, b) => a + b, 0);
+  let target = rand * total;
+  for (let i = 0; i < weights.length; i++) {
+    target -= weights[i];
+    if (target < 0) return i;
+  }
+  return weights.length - 1; // floating-point edge case at rand ~= 1
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hit, getSpawnInterval, direction, nearestIndex } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, weightedIndex } from "./logic.js";
 
 describe("hit", () => {
   it("is true when within threshold", () => {
@@ -57,5 +57,21 @@ describe("nearestIndex", () => {
   it("returns the index of the closest entity", () => {
     const entities = [{ x: 100, y: 100 }, { x: 1, y: 1 }, { x: 50, y: 50 }];
     expect(nearestIndex(0, 0, entities)).toBe(1);
+  });
+});
+
+describe("weightedIndex", () => {
+  it("picks the first bucket for a low rand value", () => {
+    expect(weightedIndex(0, [3, 2, 1])).toBe(0);
+  });
+
+  it("picks the last bucket for a rand value near 1", () => {
+    expect(weightedIndex(0.999, [3, 2, 1])).toBe(2);
+  });
+
+  it("respects weight proportions at the boundaries", () => {
+    // weights [3,2,1], total 6: bucket 0 covers [0, 0.5), bucket 1 covers [0.5, 0.833)
+    expect(weightedIndex(0.49, [3, 2, 1])).toBe(0);
+    expect(weightedIndex(0.51, [3, 2, 1])).toBe(1);
   });
 });
