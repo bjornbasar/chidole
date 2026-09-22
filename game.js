@@ -29,11 +29,18 @@ function loadSprite(src, frameCount, frameW = FRAME, frameH = FRAME) {
 }
 const sprites = {
   player: loadSprite("assets/player_walk.png", 4),
-  enemy: loadSprite("assets/enemy_run.png", 6),
   projectile: loadSprite("assets/projectile.png", 1, 10, 10),
 };
 for (const s of Object.values(sprites)) {
   s.img.onload = () => { s.loaded = true; };
+}
+
+const ENEMY_TYPES = 6;
+const enemySprites = [];
+for (let i = 1; i <= ENEMY_TYPES; i++) {
+  const s = loadSprite(`assets/enemy${i}_run.png`, 6);
+  s.img.onload = () => { s.loaded = true; };
+  enemySprites.push(s);
 }
 
 const floorTile = new Image();
@@ -88,15 +95,19 @@ function isDown(...names) {
   return names.some((n) => keys[n]);
 }
 
-// Random point just outside one of the four arena edges (top/right/bottom/left).
+// Random point just outside one of the four arena edges (top/right/bottom/left),
+// with a random enemy type (sprite index) for visual variety.
 function spawnEnemy(half) {
   const edge = Math.floor(Math.random() * 4);
+  const typeIndex = Math.floor(Math.random() * ENEMY_TYPES);
+  let pos;
   switch (edge) {
-    case 0: return { x: Math.random() * canvas.width, y: -half };
-    case 1: return { x: canvas.width + half, y: Math.random() * canvas.height };
-    case 2: return { x: Math.random() * canvas.width, y: canvas.height + half };
-    default: return { x: -half, y: Math.random() * canvas.height };
+    case 0: pos = { x: Math.random() * canvas.width, y: -half }; break;
+    case 1: pos = { x: canvas.width + half, y: Math.random() * canvas.height }; break;
+    case 2: pos = { x: Math.random() * canvas.width, y: canvas.height + half }; break;
+    default: pos = { x: -half, y: Math.random() * canvas.height };
   }
+  return { ...pos, typeIndex };
 }
 
 // --- Update ---
@@ -173,7 +184,7 @@ function draw(elapsedMs) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawFloor();
   for (const b of bullets) drawSprite(sprites.projectile, b.x, b.y, elapsedMs);
-  for (const e of enemies) drawSprite(sprites.enemy, e.x, e.y, elapsedMs);
+  for (const e of enemies) drawSprite(enemySprites[e.typeIndex], e.x, e.y, elapsedMs);
   drawSprite(sprites.player, player.x, player.y, elapsedMs);
 }
 
