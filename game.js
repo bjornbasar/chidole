@@ -72,15 +72,15 @@ const DEATH_TOTAL_MS = DEATH_FRAME_MS * 4;
 const HIT_FLASH_MS = 120; // non-lethal hits briefly show the death sprite's frame 0 (a "flinch" pose)
 const PLAYER_INVULN_MS = 800; // brief i-frames after taking a hit, so a cluster can't drain lives in one frame
 
-// Per-type stats, alternating fast/fragile vs. slow/tanky so the roster feels
-// different to fight, not just differently colored.
+// The 6 enemy types are two parallel families of 3 (green: 1-3, pink: 4-6),
+// each following the same basic -> extra -> tank tier, so both families play
+// identically at a given tier despite the different sprite/color.
+const BASIC = { hp: 1, speedMul: 1.2 };
+const EXTRA = { hp: 2, speedMul: 1.0 };
+const TANK = { hp: 4, speedMul: 0.7 };
 const ENEMY_STATS = [
-  { hp: 1, speedMul: 1.3 },
-  { hp: 2, speedMul: 1.0 },
-  { hp: 1, speedMul: 1.15 },
-  { hp: 3, speedMul: 0.8 },
-  { hp: 2, speedMul: 1.0 },
-  { hp: 4, speedMul: 0.6 },
+  BASIC, EXTRA, TANK, // green family: types 1, 2, 3
+  BASIC, EXTRA, TANK, // pink family: types 4, 5, 6
 ];
 
 const floorTile = new Image();
