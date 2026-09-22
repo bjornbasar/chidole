@@ -159,6 +159,34 @@ function isDown(...names) {
   return names.some((n) => keys[n]);
 }
 
+// Click-and-hold: move toward the cursor instead of/alongside the keyboard.
+// The player is always screen-centered, so "toward the cursor" is just the
+// direction from the canvas center to the current mouse position.
+let mouseDown = false;
+let mouseX = canvas.width / 2;
+let mouseY = canvas.height / 2;
+
+function canvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) * (canvas.width / rect.width),
+    y: (e.clientY - rect.top) * (canvas.height / rect.height),
+  };
+}
+canvas.addEventListener("mousedown", (e) => {
+  mouseDown = true;
+  const p = canvasPos(e);
+  mouseX = p.x;
+  mouseY = p.y;
+});
+canvas.addEventListener("mousemove", (e) => {
+  if (!mouseDown) return;
+  const p = canvasPos(e);
+  mouseX = p.x;
+  mouseY = p.y;
+});
+window.addEventListener("mouseup", () => { mouseDown = false; });
+
 // Random world-space point just outside one of the four edges of the current
 // viewport (relative to the player, since the world scrolls with them), with
 // a random enemy type (sprite index) for visual variety.
@@ -190,10 +218,16 @@ function update(dt, elapsedMs) {
   const half = FRAME / 2;
   let dx = 0;
   let dy = 0;
-  if (isDown("ArrowLeft", "a", "A")) dx -= 1;
-  if (isDown("ArrowRight", "d", "D")) dx += 1;
-  if (isDown("ArrowUp", "w", "W")) dy -= 1;
-  if (isDown("ArrowDown", "s", "S")) dy += 1;
+  if (mouseDown) {
+    const dir = direction(canvas.width / 2, canvas.height / 2, mouseX, mouseY);
+    dx = dir.x;
+    dy = dir.y;
+  } else {
+    if (isDown("ArrowLeft", "a", "A")) dx -= 1;
+    if (isDown("ArrowRight", "d", "D")) dx += 1;
+    if (isDown("ArrowUp", "w", "W")) dy -= 1;
+    if (isDown("ArrowDown", "s", "S")) dy += 1;
+  }
   player.x += dx * PLAYER_SPEED * dt;
   player.y += dy * PLAYER_SPEED * dt;
 
