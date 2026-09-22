@@ -16,7 +16,11 @@
     -webkit-user-select: none; user-select: none;
   }
   #wrap { position: relative; }
-  canvas { display: block; border: 1px solid #1a1a2e; image-rendering: pixelated; }
+  canvas {
+    display: block; border: 1px solid #1a1a2e; image-rendering: pixelated;
+    cursor: url("assets/cursor.png") 0 0, auto;
+  }
+  canvas:active { cursor: url("assets/cursor_active.png") 0 0, auto; }
   #hud {
     display: flex; justify-content: space-between; align-items: center;
     color: #8af; font-size: 14px;
