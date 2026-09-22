@@ -5,18 +5,21 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 canvas.width = 360;
 canvas.height = 640;
+ctx.imageSmoothingEnabled = false; // keep pixel art crisp, not blurred
 
 const scoreEl = document.getElementById("score");
-const livesEl = document.getElementById("lives");
+const hpFillEl = document.getElementById("hpFill");
 const overlay = document.getElementById("overlay");
 const startBtn = document.getElementById("startBtn");
 
 const FRAME = 48; // all character/enemy sprite frames are 48x48px
+const TILE = 32; // location floor tile size
 const PLAYER_SPEED = 200; // px/sec
 const BULLET_SPEED = 400; // px/sec
 const FIRE_INTERVAL = 220; // ms between auto-fired shots
 const ENEMY_SPEED = 90; // px/sec
 const HIT_RADIUS = FRAME * 0.35; // approximates the sprites' visible silhouette, not their full padded frame
+const MAX_LIVES = 3;
 
 // --- Sprite loading ---
 function loadSprite(src, frameCount, frameW = FRAME, frameH = FRAME) {
@@ -31,6 +34,24 @@ const sprites = {
 };
 for (const s of Object.values(sprites)) {
   s.img.onload = () => { s.loaded = true; };
+}
+
+const floorTile = new Image();
+let floorTileLoaded = false;
+floorTile.onload = () => { floorTileLoaded = true; };
+floorTile.src = "assets/floor_tile.png";
+
+function drawFloor() {
+  if (!floorTileLoaded) return;
+  for (let y = 0; y < canvas.height; y += TILE) {
+    for (let x = 0; x < canvas.width; x += TILE) {
+      ctx.drawImage(floorTile, x, y, TILE, TILE);
+    }
+  }
+}
+
+function setLivesDisplay(n) {
+  hpFillEl.style.transform = `scaleX(${Math.max(0, n) / MAX_LIVES})`;
 }
 
 function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120) {
@@ -52,7 +73,7 @@ let fireAccum = 0;
 let spawnAccum = 0;
 
 let score = 0;
-let lives = 3;
+let lives = MAX_LIVES;
 let running = false;
 let gameOver = false;
 let startTime = 0;
@@ -138,7 +159,7 @@ function update(dt, elapsedMs) {
     if (hit(player.x, player.y, enemies[i].x, enemies[i].y, HIT_RADIUS)) {
       enemies.splice(i, 1);
       lives--;
-      livesEl.textContent = lives;
+      setLivesDisplay(lives);
       if (lives <= 0) {
         endGame();
         return;
@@ -150,6 +171,7 @@ function update(dt, elapsedMs) {
 // --- Drawing ---
 function draw(elapsedMs) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawFloor();
   for (const b of bullets) drawSprite(sprites.projectile, b.x, b.y, elapsedMs);
   for (const e of enemies) drawSprite(sprites.enemy, e.x, e.y, elapsedMs);
   drawSprite(sprites.player, player.x, player.y, elapsedMs);
@@ -176,9 +198,9 @@ function startGame() {
   fireAccum = 0;
   spawnAccum = 0;
   score = 0;
-  lives = 3;
+  lives = MAX_LIVES;
   scoreEl.textContent = score;
-  livesEl.textContent = lives;
+  setLivesDisplay(lives);
   running = true;
   gameOver = false;
   startTime = performance.now();

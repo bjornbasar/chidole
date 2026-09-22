@@ -18,10 +18,16 @@
   #wrap { position: relative; }
   canvas { display: block; border: 1px solid #1a1a2e; image-rendering: pixelated; }
   #hud {
-    display: flex; justify-content: space-between;
+    display: flex; justify-content: space-between; align-items: center;
     color: #8af; font-size: 14px;
     padding: 4px 8px;
   }
+  .healthbar { position: relative; display: inline-block; width: 96px; height: 12px; }
+  .healthbar img {
+    position: absolute; top: 0; left: 0; width: 96px; height: 12px;
+    image-rendering: pixelated;
+  }
+  #hpFill { transform-origin: left center; }
   #overlay {
     position: absolute; inset: 0; display: flex; flex-direction: column;
     align-items: center; justify-content: center; color: #fff;
@@ -43,7 +49,10 @@
   <div id="wrap">
     <div id="hud">
       <span>SCORE: <span id="score">0</span></span>
-      <span>LIVES: <span id="lives">3</span></span>
+      <span class="healthbar">
+        <img src="assets/hpbar_back.png" alt="">
+        <img src="assets/hpbar_red.png" id="hpFill" alt="">
+      </span>
     </div>
     <canvas id="game"></canvas>
     <div id="overlay">
