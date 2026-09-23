@@ -79,9 +79,9 @@ const PLAYER_INVULN_MS = 800; // brief i-frames after taking a hit, so a cluster
 // The 6 enemy types are two parallel families of 3 (green: 1-3, pink: 4-6),
 // each following the same basic -> extra -> tank tier, so both families play
 // identically at a given tier despite the different sprite/color.
-const BASIC = { hp: 1, speedMul: 1.2 };
-const EXTRA = { hp: 2, speedMul: 1.0 };
-const TANK = { hp: 4, speedMul: 0.7 };
+const BASIC = { hp: 1, speedMul: 1.2, xpValue: 1, xpSprite: "basic" };
+const EXTRA = { hp: 2, speedMul: 1.0, xpValue: 2, xpSprite: "extra" };
+const TANK = { hp: 4, speedMul: 0.7, xpValue: 5, xpSprite: "tank" };
 const ENEMY_STATS = [
   BASIC, EXTRA, TANK, // green family: types 1, 2, 3
   BASIC, EXTRA, TANK, // pink family: types 4, 5, 6
@@ -92,6 +92,16 @@ const TIER_TYPE_INDICES = { basic: [0, 3], extra: [1, 4], tank: [2, 5] };
 
 function randomBasicTarget() { return 3 + Math.floor(Math.random() * 4); } // 3-6
 function randomExtraTarget() { return 4 + Math.floor(Math.random() * 2); } // 4-5
+
+const xpSprites = {
+  basic: loadSprite("assets/xp_basic.png", 1, 5, 5),
+  extra: loadSprite("assets/xp_extra.png", 1, 7, 7),
+  tank: loadSprite("assets/xp_tank.png", 1, 10, 10),
+};
+for (const s of Object.values(xpSprites)) {
+  s.img.onload = () => { s.loaded = true; };
+}
+const XP_PICKUP_RADIUS = 14; // plain proximity pickup, no magnet yet
 
 const floorTile = new Image();
 let floorTileLoaded = false;
@@ -159,6 +169,8 @@ let playerHitFlashUntil = 0;
 let playerInvulnUntil = 0;
 let bullets = [];
 let enemies = [];
+let xpOrbs = [];
+let xp = 0;
 let fireAccum = 0;
 let spawnAccum = 0;
 let spawnTierState = { basicCount: 0, basicTarget: randomBasicTarget(), extraCount: 0, extraTarget: randomExtraTarget() };
@@ -312,6 +324,14 @@ function update(dt, elapsedMs) {
     }
   }
 
+  // XP orb pickup — plain proximity, no magnet/attraction yet
+  for (let i = xpOrbs.length - 1; i >= 0; i--) {
+    if (hit(player.x, player.y, xpOrbs[i].x, xpOrbs[i].y, XP_PICKUP_RADIUS)) {
+      xp += xpOrbs[i].value;
+      xpOrbs.splice(i, 1);
+    }
+  }
+
   // bullet <-> enemy collision — each hit costs 1 HP, tankier types take more shots
   for (let i = enemies.length - 1; i >= 0; i--) {
     if (enemies[i].dying) continue;
@@ -324,6 +344,8 @@ function update(dt, elapsedMs) {
           enemies[i].deathStart = elapsedMs;
           score++;
           scoreEl.textContent = score;
+          const tierStats = ENEMY_STATS[enemies[i].typeIndex];
+          xpOrbs.push({ x: enemies[i].x, y: enemies[i].y, value: tierStats.xpValue, sprite: tierStats.xpSprite });
         } else {
           enemies[i].hitFlashUntil = elapsedMs + HIT_FLASH_MS;
         }
@@ -359,6 +381,10 @@ function update(dt, elapsedMs) {
 function draw(elapsedMs) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawFloor();
+  for (const orb of xpOrbs) {
+    const s = toScreen(orb.x, orb.y);
+    drawSprite(xpSprites[orb.sprite], s.x, s.y, elapsedMs);
+  }
   for (const b of bullets) {
     const s = toScreen(b.x, b.y);
     drawSprite(sprites.projectile, s.x, s.y, elapsedMs);
@@ -420,6 +446,8 @@ function startGame() {
   playerInvulnUntil = 0;
   bullets = [];
   enemies = [];
+  xpOrbs = [];
+  xp = 0;
   fireAccum = 0;
   spawnAccum = 0;
   spawnTierState = { basicCount: 0, basicTarget: randomBasicTarget(), extraCount: 0, extraTarget: randomExtraTarget() };
