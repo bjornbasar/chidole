@@ -101,7 +101,8 @@ const xpSprites = {
 for (const s of Object.values(xpSprites)) {
   s.img.onload = () => { s.loaded = true; };
 }
-const XP_PICKUP_RADIUS = 40; // plain proximity pickup, no magnet yet
+const XP_PICKUP_RADIUS = 50; // plain proximity pickup, no magnet yet
+const XP_COLLECT_MS = 220; // absorb animation duration once picked up
 
 const floorTile = new Image();
 let floorTileLoaded = false;
@@ -132,21 +133,21 @@ function setLivesDisplay(n) {
   hpFillEl.style.transform = `scaleX(${Math.max(0, n) / MAX_LIVES})`;
 }
 
-function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120, flip = 1) {
+function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120, flip = 1, scale = 1) {
   if (!sprite.loaded) return;
   const { frameW, frameH, frameCount } = sprite;
   const frame = Math.floor(elapsedMs / frameDurationMs) % frameCount;
-  drawSpriteFrame(sprite, frame, x, y, flip);
+  drawSpriteFrame(sprite, frame, x, y, flip, scale);
 }
 
 // Draws one explicit frame (no time-based animation) — used for sprites whose
 // frame is chosen by state (aim direction, a held flinch pose) rather than elapsed time.
-function drawSpriteFrame(sprite, frame, x, y, flip = 1) {
+function drawSpriteFrame(sprite, frame, x, y, flip = 1, scale = 1) {
   if (!sprite.loaded) return;
   const { frameW, frameH } = sprite;
   ctx.save();
   ctx.translate(x, y);
-  ctx.scale(flip, 1);
+  ctx.scale(flip * scale, scale);
   ctx.drawImage(
     sprite.img,
     frame * frameW, 0, frameW, frameH,
@@ -324,10 +325,17 @@ function update(dt, elapsedMs) {
     }
   }
 
-  // XP orb pickup — plain proximity, no magnet/attraction yet
+  // XP orb pickup — plain proximity, no magnet/attraction yet. XP is granted
+  // immediately; the orb then plays a brief "absorbed" animation (shrink +
+  // pull toward the player) before actually being removed.
   for (let i = xpOrbs.length - 1; i >= 0; i--) {
-    if (hit(player.x, player.y, xpOrbs[i].x, xpOrbs[i].y, XP_PICKUP_RADIUS)) {
-      xp += xpOrbs[i].value;
+    const orb = xpOrbs[i];
+    if (!orb.collecting && hit(player.x, player.y, orb.x, orb.y, XP_PICKUP_RADIUS)) {
+      xp += orb.value;
+      orb.collecting = true;
+      orb.collectStart = elapsedMs;
+    }
+    if (orb.collecting && elapsedMs - orb.collectStart >= XP_COLLECT_MS) {
       xpOrbs.splice(i, 1);
     }
   }
@@ -345,7 +353,7 @@ function update(dt, elapsedMs) {
           score++;
           scoreEl.textContent = score;
           const tierStats = ENEMY_STATS[enemies[i].typeIndex];
-          xpOrbs.push({ x: enemies[i].x, y: enemies[i].y, value: tierStats.xpValue, sprite: tierStats.xpSprite });
+          xpOrbs.push({ x: enemies[i].x, y: enemies[i].y, value: tierStats.xpValue, sprite: tierStats.xpSprite, collecting: false, collectStart: 0 });
         } else {
           enemies[i].hitFlashUntil = elapsedMs + HIT_FLASH_MS;
         }
@@ -382,8 +390,18 @@ function draw(elapsedMs) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   drawFloor();
   for (const orb of xpOrbs) {
-    const s = toScreen(orb.x, orb.y);
-    drawSprite(xpSprites[orb.sprite], s.x, s.y, elapsedMs);
+    let wx = orb.x;
+    let wy = orb.y;
+    let scale = 1;
+    if (orb.collecting) {
+      // pulled toward the player's current position while shrinking away
+      const t = Math.min((elapsedMs - orb.collectStart) / XP_COLLECT_MS, 1);
+      wx = orb.x + (player.x - orb.x) * t;
+      wy = orb.y + (player.y - orb.y) * t;
+      scale = 1 - t;
+    }
+    const s = toScreen(wx, wy);
+    drawSprite(xpSprites[orb.sprite], s.x, s.y, elapsedMs, 120, 1, scale);
   }
   for (const b of bullets) {
     const s = toScreen(b.x, b.y);
