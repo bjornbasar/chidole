@@ -65,11 +65,11 @@ export function advanceSpawnTier(state, nextBasicTarget, nextExtraTarget) {
 }
 
 // Maps an aim direction to a frame index + horizontal flip for a 9-frame
-// weapon rotation strip that only covers up(0) -> right(4) -> down(8) - the
+// weapon rotation strip that only covers down(0) -> right(4) -> up(8) - the
 // left half (NW/W/SW) reuses the right half's frames mirrored, since the
 // source art only draws one side. Compass order matches atan2's winding
 // (0=E, going clockwise in screen space where +y is down).
-const AIM_FRAME_BY_COMPASS = [4, 6, 8, 6, 4, 2, 0, 2]; // E,SE,S,SW,W,NW,N,NE
+const AIM_FRAME_BY_COMPASS = [4, 2, 0, 2, 4, 6, 8, 6]; // E,SE,S,SW,W,NW,N,NE
 const AIM_FLIP_BY_COMPASS = [1, 1, 1, -1, -1, -1, 1, 1];
 
 export function aimFrame(dirX, dirY) {

@@ -109,16 +109,16 @@ describe("advanceSpawnTier", () => {
 
 describe("aimFrame", () => {
   it("maps the 4 native (right-side) cardinal/diagonal directions with no flip", () => {
-    expect(aimFrame(0, -1)).toEqual({ frame: 0, flip: 1 }); // N
-    expect(aimFrame(1, -1)).toEqual({ frame: 2, flip: 1 }); // NE
+    expect(aimFrame(0, 1)).toEqual({ frame: 0, flip: 1 }); // S — frame 0 is the front-view pose
+    expect(aimFrame(1, 1)).toEqual({ frame: 2, flip: 1 }); // SE
     expect(aimFrame(1, 0)).toEqual({ frame: 4, flip: 1 }); // E
-    expect(aimFrame(1, 1)).toEqual({ frame: 6, flip: 1 }); // SE
-    expect(aimFrame(0, 1)).toEqual({ frame: 8, flip: 1 }); // S
+    expect(aimFrame(1, -1)).toEqual({ frame: 6, flip: 1 }); // NE
+    expect(aimFrame(0, -1)).toEqual({ frame: 8, flip: 1 }); // N
   });
 
   it("mirrors the right-side frames for the 3 left-side directions", () => {
-    expect(aimFrame(-1, 1)).toEqual({ frame: 6, flip: -1 }); // SW mirrors SE
+    expect(aimFrame(-1, -1)).toEqual({ frame: 6, flip: -1 }); // NW mirrors NE
     expect(aimFrame(-1, 0)).toEqual({ frame: 4, flip: -1 }); // W mirrors E
-    expect(aimFrame(-1, -1)).toEqual({ frame: 2, flip: -1 }); // NW mirrors NE
+    expect(aimFrame(-1, 1)).toEqual({ frame: 2, flip: -1 }); // SW mirrors SE
   });
 });
