@@ -101,7 +101,7 @@ const xpSprites = {
 for (const s of Object.values(xpSprites)) {
   s.img.onload = () => { s.loaded = true; };
 }
-const XP_PICKUP_RADIUS = 14; // plain proximity pickup, no magnet yet
+const XP_PICKUP_RADIUS = 40; // plain proximity pickup, no magnet yet
 
 const floorTile = new Image();
 let floorTileLoaded = false;
