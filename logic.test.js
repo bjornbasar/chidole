@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor, xpThreshold } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor, xpThreshold, pickFromPool, fireIntervalFor, quadrantBucket } from "./logic.js";
 
 describe("hit", () => {
   it("is true when within threshold", () => {
@@ -146,5 +146,69 @@ describe("xpThreshold", () => {
     expect(xpThreshold(1)).toBe(10);
     expect(xpThreshold(2)).toBe(20);
     expect(xpThreshold(5)).toBe(50);
+  });
+});
+
+describe("pickFromPool", () => {
+  it("picks the first entry at randomFloat 0", () => {
+    expect(pickFromPool([1, 3, 5], 0)).toBe(1);
+  });
+
+  it("picks the last entry just under 1", () => {
+    expect(pickFromPool([1, 3, 5], 0.999999)).toBe(5);
+  });
+
+  it("picks the middle entry mid-range", () => {
+    expect(pickFromPool([1, 3, 5], 0.5)).toBe(3);
+  });
+});
+
+describe("fireIntervalFor", () => {
+  it("returns the base interval at rate 1", () => {
+    expect(fireIntervalFor(200, 1)).toBe(200);
+  });
+
+  it("fires more often (shorter interval) at a higher rate", () => {
+    expect(fireIntervalFor(200, 2)).toBe(100);
+  });
+
+  it("fires less often (longer interval) at a lower rate", () => {
+    expect(fireIntervalFor(200, 0.5)).toBe(400);
+  });
+});
+
+describe("quadrantBucket", () => {
+  it("picks the 0 sample (index 0), no transpose, for E/W", () => {
+    expect(quadrantBucket(1, 0)).toEqual({ index: 0, flipX: 1, flipY: 1, transpose: false });
+    expect(quadrantBucket(-1, 0)).toEqual({ index: 0, flipX: -1, flipY: 1, transpose: false });
+  });
+
+  it("picks the 0 sample (index 0), transposed, for the exactly-vertical S/N directions", () => {
+    expect(quadrantBucket(0, 1)).toEqual({ index: 0, flipX: 1, flipY: 1, transpose: true });
+    expect(quadrantBucket(0, -1)).toEqual({ index: 0, flipX: 1, flipY: -1, transpose: true });
+  });
+
+  it("picks the 45 sample (index 1), no transpose, for the diagonals", () => {
+    expect(quadrantBucket(1, 1)).toEqual({ index: 1, flipX: 1, flipY: 1, transpose: false });
+    expect(quadrantBucket(-1, -1)).toEqual({ index: 1, flipX: -1, flipY: -1, transpose: false });
+  });
+
+  it("mirrors independently per quadrant", () => {
+    expect(quadrantBucket(-1, 1)).toEqual({ index: 1, flipX: -1, flipY: 1, transpose: false });
+    expect(quadrantBucket(1, -1)).toEqual({ index: 1, flipX: 1, flipY: -1, transpose: false });
+  });
+
+  it("never disagrees with aimFrame's horizontal flip, even near a compass boundary", () => {
+    // 25° used to fold to the near-horizontal (30) reference here while
+    // aimFrame's independent 45°-multiple rounding already called it SE —
+    // a visible mismatch between the gun's pose and its own muzzle flash.
+    for (const deg of [10, 22.4, 22.6, 25, 40, 60, 67.4, 67.6, 80]) {
+      for (const sign of [1, -1]) {
+        const rad = (deg * Math.PI) / 180;
+        const dirX = sign * Math.cos(rad);
+        const dirY = sign * Math.sin(rad);
+        expect(quadrantBucket(dirX, dirY).flipX).toBe(aimFrame(dirX, dirY).flip);
+      }
+    }
   });
 });

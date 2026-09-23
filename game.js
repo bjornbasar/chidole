@@ -1,4 +1,4 @@
-import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor, xpThreshold } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor, xpThreshold, pickFromPool, fireIntervalFor, quadrantBucket } from "./logic.js";
 
 // --- Setup ---
 const canvas = document.getElementById("game");
@@ -17,8 +17,8 @@ const startBtn = document.getElementById("startBtn");
 const FRAME = 48; // all character/enemy sprite frames are 48x48px
 const TILE = 32; // location floor tile size
 const PLAYER_SPEED = 200; // px/sec
-const BULLET_SPEED = 400; // px/sec
 const FIRE_INTERVAL_BASE = 220; // ms between auto-fired shots, before level-up effects
+const RANGE_UNIT_PX = 24; // scales #30's abstract Range column to world px — placeholder, tune after visual testing
 const LEVEL_UP_FIRE_RATE_MUL = 0.9; // each level-up: 10% faster firing (placeholder effect, real skills replace this)
 const ENEMY_SPEED = 90; // px/sec
 const HIT_RADIUS = FRAME * 0.35; // approximates the sprites' visible silhouette, not their full padded frame
@@ -31,7 +31,6 @@ function loadSprite(src, frameCount, frameW = FRAME, frameH = FRAME) {
   return { img, frameCount, frameW, frameH, loaded: false };
 }
 const sprites = {
-  projectile: loadSprite("assets/projectile.png", 1, 10, 10),
   hpBarBack: loadSprite("assets/hpbar_back.png", 1, 16, 2),
   hpBarRed: loadSprite("assets/hpbar_red.png", 1, 16, 2),
 };
@@ -50,9 +49,32 @@ for (const s of Object.values(playerSprites)) {
   s.img.onload = () => { s.loaded = true; };
 }
 
-const weaponSprite = loadSprite("assets/weapon1.png", 9);
-weaponSprite.img.onload = () => { weaponSprite.loaded = true; };
 const WEAPON_OFFSET = HIT_RADIUS + 8; // beyond the player's visible silhouette edge, not from dead-center
+
+// Starter pool is {1, 3, 5} — the 3 ranged weapons that are hitscan/effect-only
+// per #30 (weapon 4 is an orbiter now, #61, no longer a plain starter gun).
+// Only these 3 weapons' data is defined so far; the rest of the 9-weapon
+// roster comes in later stories (#35/#60/#61) as their own increments.
+// Each effect is 2 direction-variant sprites [0°, 45°] indexed by
+// quadrantBucket() — same fold-and-mirror convention as the projectile/laser
+// sprites (#60). The kit's 30° sample exists on disk
+// (assets/effect{family}_30.png) but is unused until #33 (16-direction
+// facing) needs finer-grained references — see quadrantBucket()'s own
+// comment for why 0°/45° alone already cover all 8 compass directions.
+function effectSprites(family) {
+  return ["0", "45"].map((angle) => loadSprite(`assets/effect${family}_${angle}.png`, 6, 96, 96));
+}
+const WEAPON_DATA = {
+  1: { sprite: loadSprite("assets/weapon1.png", 9), effect: effectSprites(1), range: 12 * RANGE_UNIT_PX, rate: 1 },
+  3: { sprite: loadSprite("assets/weapon3.png", 9), effect: effectSprites(4), range: 6 * RANGE_UNIT_PX, rate: 0.7 },
+  5: { sprite: loadSprite("assets/weapon5.png", 9), effect: effectSprites(3), range: 10 * RANGE_UNIT_PX, rate: 1 },
+};
+const STARTER_POOL = [1, 3, 5];
+for (const w of Object.values(WEAPON_DATA)) {
+  for (const s of [w.sprite, ...w.effect]) {
+    s.img.onload = () => { s.loaded = true; };
+  }
+}
 
 const playerDeathSprites = {
   down: loadSprite("assets/player_death_down.png", 4),
@@ -78,6 +100,13 @@ for (let i = 1; i <= ENEMY_TYPES; i++) {
 
 const DEATH_FRAME_MS = 120;
 const DEATH_TOTAL_MS = DEATH_FRAME_MS * 4;
+const MUZZLE_EFFECT_FRAME_MS = 90;
+const MUZZLE_EFFECT_TOTAL_MS = MUZZLE_EFFECT_FRAME_MS * 6; // effect sprites are 6-frame strips
+// The kit's 0° and 45° effect samples aren't laid out the same way — their
+// true origin (frame 0's near-invisible starting dot, confirmed by bbox
+// across all 3 effect families) sits at a different sprite-pixel coordinate
+// in each, indexed by quadrantBucket()'s `index` (0=0° sample, 1=45°).
+const MUZZLE_EFFECT_ORIGIN = [{ x: 1, y: 48 }, { x: 12, y: 12 }];
 const HIT_FLASH_MS = 120; // non-lethal hits briefly show the death sprite's frame 0 (a "flinch" pose)
 const PLAYER_INVULN_MS = 800; // brief i-frames after taking a hit, so a cluster can't drain lives in one frame
 
@@ -161,25 +190,43 @@ function checkLevelUp() {
   setXpDisplay(xp);
 }
 
-function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120, flip = 1, scale = 1) {
+function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120, flip = 1, scale = 1, flipY = 1, origin = null, transpose = false) {
   if (!sprite.loaded) return;
   const { frameW, frameH, frameCount } = sprite;
   const frame = Math.floor(elapsedMs / frameDurationMs) % frameCount;
-  drawSpriteFrame(sprite, frame, x, y, flip, scale);
+  drawSpriteFrame(sprite, frame, x, y, flip, scale, flipY, origin, transpose);
 }
 
 // Draws one explicit frame (no time-based animation) — used for sprites whose
 // frame is chosen by state (aim direction, a held flinch pose) rather than elapsed time.
-function drawSpriteFrame(sprite, frame, x, y, flip = 1, scale = 1) {
+// flipY mirrors vertically too, for the quadrant-folded direction sprites (#60).
+// origin ({x,y} sprite-pixel coords, before flip/scale) is where (x,y) sits
+// within the frame — null (default) is frame-center, used by everything
+// except the muzzle-effect sprites, whose burst art isn't centered in its
+// own frame, and whose exact origin differs per direction sample (the 0° and
+// 45° effect art aren't laid out the same way — a single fixed fraction
+// doesn't fit both, hence explicit per-sample pixel coordinates instead).
+// transpose swaps the local x/y axes (a reflection across the 45° diagonal,
+// applied before flip/scale) — how quadrantBucket() turns the 0° effect
+// sample into a 90°-equivalent for the exactly-vertical S/N directions,
+// since flip alone can't reach 90° from a 0° reference.
+function drawSpriteFrame(sprite, frame, x, y, flip = 1, scale = 1, flipY = 1, origin = null, transpose = false) {
   if (!sprite.loaded) return;
   const { frameW, frameH } = sprite;
+  const originX = origin ? origin.x : frameW / 2;
+  const originY = origin ? origin.y : frameH / 2;
   ctx.save();
   ctx.translate(x, y);
-  ctx.scale(flip * scale, scale);
+  // canvas applies the LAST-called transform to the coordinates FIRST, so
+  // scale must be called before transform(transpose) here — otherwise the
+  // flip is applied before the axis-swap and gets silently cancelled out
+  // (this is exactly what made a "north" aim render a "south" effect).
+  ctx.scale(flip * scale, flipY * scale);
+  if (transpose) ctx.transform(0, 1, 1, 0, 0, 0);
   ctx.drawImage(
     sprite.img,
     frame * frameW, 0, frameW, frameH,
-    -frameW / 2, -frameH / 2, frameW, frameH
+    -originX, -originY, frameW, frameH
   );
   ctx.restore();
 }
@@ -193,8 +240,8 @@ function drawBar(backSprite, fillSprite, x, y, w, h, frac) {
 
 // --- Play area ---
 // player.x/y is the player's WORLD position (also the camera position, since
-// the player sprite is always drawn at screen center). Enemies/bullets are
-// world-space too; only draw() converts to screen space.
+// the player sprite is always drawn at screen center). Enemies/muzzle
+// effects are world-space too; only draw() converts to screen space.
 const player = { x: 0, y: 0 };
 let facing = "down"; // "down" | "up" | "side" — holds last direction while idle
 let facingFlip = 1; // 1 = facing right, -1 = mirrored (facing left)
@@ -203,7 +250,8 @@ let playerDying = false;
 let playerDeathStart = 0;
 let playerHitFlashUntil = 0;
 let playerInvulnUntil = 0;
-let bullets = [];
+let activeWeapon = WEAPON_DATA[STARTER_POOL[0]]; // replaced with the rolled starter in startGame()
+let muzzleFlashStart = -Infinity; // just a timer — draw() derives position/sprite/direction fresh, so it can't drift from the weapon or disagree with its current aim
 let enemies = [];
 let xpOrbs = [];
 let xp = 0;
@@ -278,6 +326,25 @@ function spawnEnemy(half) {
   return { ...pos, typeIndex, hp: ENEMY_STATS[typeIndex].hp, dying: false, deathStart: 0, hitFlashUntil: 0 };
 }
 
+// Resolves an instant hitscan hit on enemies[i] — decrements HP, triggers
+// death/XP-orb or a hit-flash. The effect itself fires from the weapon's own
+// muzzle (per reference art: a burst at the nozzle, not a splash at the
+// target), so it's spawned by the caller at the weapon's offset position.
+function damageEnemy(i, elapsedMs) {
+  const enemy = enemies[i];
+  enemy.hp--;
+  if (enemy.hp <= 0) {
+    enemy.dying = true;
+    enemy.deathStart = elapsedMs;
+    score++;
+    scoreEl.textContent = score;
+    const tierStats = ENEMY_STATS[enemy.typeIndex];
+    xpOrbs.push({ x: enemy.x, y: enemy.y, value: tierStats.xpValue, sprite: tierStats.xpSprite, collecting: false, collectStart: 0 });
+  } else {
+    enemy.hitFlashUntil = elapsedMs + HIT_FLASH_MS;
+  }
+}
+
 // --- Update ---
 function update(dt, elapsedMs) {
   // player death animation plays out fully before game-over shows
@@ -314,31 +381,34 @@ function update(dt, elapsedMs) {
     }
   }
 
-  // aim tracks the nearest enemy every frame (for weapon rendering), independent
-  // of the fire cooldown below — holds its last direction when nothing's in range
-  const targetI = nearestIndex(player.x, player.y, enemies);
+  // aim tracks the nearest LIVE enemy every frame (for weapon rendering),
+  // independent of the fire cooldown below — holds its last direction when
+  // nothing's in range. Dying corpses are excluded — nearestIndex() has no
+  // concept of "dying", so it's called on the alive subset, then the result
+  // is mapped back to its real index in `enemies` (otherwise the weapon kept
+  // targeting/re-hitting a corpse still mid-death-animation).
+  const aliveIndices = [];
+  const aliveEnemies = [];
+  for (let i = 0; i < enemies.length; i++) {
+    if (enemies[i].dying) continue;
+    aliveIndices.push(i);
+    aliveEnemies.push(enemies[i]);
+  }
+  const nearestAliveI = nearestIndex(player.x, player.y, aliveEnemies);
+  const targetI = nearestAliveI === -1 ? -1 : aliveIndices[nearestAliveI];
   if (targetI !== -1) {
     aimDir = direction(player.x, player.y, enemies[targetI].x, enemies[targetI].y);
   }
 
   // auto-fire at the nearest enemy — always on, no button, Survivor.io-style.
-  // Bullets originate from the weapon's offset position, not the player's center.
+  // All 3 starter weapons are hitscan/effect-only (#30): no travel, resolves
+  // instantly, gated by the weapon's own range (previously missing entirely).
   fireAccum += dt * 1000;
-  if (fireAccum >= fireInterval && targetI !== -1) {
+  const inRange = targetI !== -1 && hit(player.x, player.y, enemies[targetI].x, enemies[targetI].y, activeWeapon.range);
+  if (fireAccum >= fireInterval && inRange) {
     fireAccum = 0;
-    const weaponX = player.x + aimDir.x * WEAPON_OFFSET;
-    const weaponY = player.y + aimDir.y * WEAPON_OFFSET;
-    bullets.push({ x: weaponX, y: weaponY, vx: aimDir.x * BULLET_SPEED, vy: aimDir.y * BULLET_SPEED });
-  }
-
-  // bullets travel in their fired direction, despawn once off-viewport
-  for (let i = bullets.length - 1; i >= 0; i--) {
-    bullets[i].x += bullets[i].vx * dt;
-    bullets[i].y += bullets[i].vy * dt;
-    const b = bullets[i];
-    if (Math.abs(b.x - player.x) > canvas.width / 2 + half || Math.abs(b.y - player.y) > canvas.height / 2 + half) {
-      bullets.splice(i, 1);
-    }
+    muzzleFlashStart = elapsedMs; // draw() re-derives position/direction fresh every frame — see its own comment
+    damageEnemy(targetI, elapsedMs);
   }
 
   // enemies spawn just outside a random edge of the arena and home toward the player
@@ -375,28 +445,6 @@ function update(dt, elapsedMs) {
     }
     if (orb.collecting && elapsedMs - orb.collectStart >= XP_COLLECT_MS) {
       xpOrbs.splice(i, 1);
-    }
-  }
-
-  // bullet <-> enemy collision — each hit costs 1 HP, tankier types take more shots
-  for (let i = enemies.length - 1; i >= 0; i--) {
-    if (enemies[i].dying) continue;
-    for (let j = bullets.length - 1; j >= 0; j--) {
-      if (hit(enemies[i].x, enemies[i].y, bullets[j].x, bullets[j].y, HIT_RADIUS)) {
-        bullets.splice(j, 1);
-        enemies[i].hp--;
-        if (enemies[i].hp <= 0) {
-          enemies[i].dying = true;
-          enemies[i].deathStart = elapsedMs;
-          score++;
-          scoreEl.textContent = score;
-          const tierStats = ENEMY_STATS[enemies[i].typeIndex];
-          xpOrbs.push({ x: enemies[i].x, y: enemies[i].y, value: tierStats.xpValue, sprite: tierStats.xpSprite, collecting: false, collectStart: 0 });
-        } else {
-          enemies[i].hitFlashUntil = elapsedMs + HIT_FLASH_MS;
-        }
-        break;
-      }
     }
   }
 
@@ -441,10 +489,6 @@ function draw(elapsedMs) {
     const s = toScreen(wx, wy);
     drawSprite(xpSprites[orb.sprite], s.x, s.y, elapsedMs, 120, 1, scale);
   }
-  for (const b of bullets) {
-    const s = toScreen(b.x, b.y);
-    drawSprite(sprites.projectile, s.x, s.y, elapsedMs);
-  }
   for (const e of enemies) {
     const s = toScreen(e.x, e.y);
     if (e.dying) {
@@ -475,7 +519,15 @@ function draw(elapsedMs) {
     const { frame, flip } = aimFrame(aimDir.x, aimDir.y);
     const wx = canvas.width / 2 + aimDir.x * WEAPON_OFFSET;
     const wy = canvas.height / 2 + aimDir.y * WEAPON_OFFSET;
-    drawSpriteFrame(weaponSprite, frame, wx, wy, flip);
+    drawSpriteFrame(activeWeapon.sprite, frame, wx, wy, flip);
+    // muzzle flash draws at the SAME (wx,wy) using the CURRENT aim direction,
+    // not a position/direction captured at fire time — so it can never drift
+    // off the moving weapon or disagree with its current pose (previously a
+    // separately-tracked world-space entity, which did both).
+    if (elapsedMs - muzzleFlashStart < MUZZLE_EFFECT_TOTAL_MS) {
+      const { index, flipX, flipY, transpose } = quadrantBucket(aimDir.x, aimDir.y);
+      drawSprite(activeWeapon.effect[index], wx, wy, elapsedMs - muzzleFlashStart, MUZZLE_EFFECT_FRAME_MS, flipX, 1, flipY, MUZZLE_EFFECT_ORIGIN[index], transpose);
+    }
     ctx.globalAlpha = 1;
   }
 }
@@ -504,12 +556,14 @@ function startGame() {
   playerDying = false;
   playerHitFlashUntil = 0;
   playerInvulnUntil = 0;
-  bullets = [];
+  const starterId = pickFromPool(STARTER_POOL, Math.random());
+  activeWeapon = WEAPON_DATA[starterId];
+  muzzleFlashStart = -Infinity;
   enemies = [];
   xpOrbs = [];
   xp = 0;
   level = 1;
-  fireInterval = FIRE_INTERVAL_BASE;
+  fireInterval = fireIntervalFor(FIRE_INTERVAL_BASE, activeWeapon.rate);
   fireAccum = 0;
   spawnAccum = 0;
   spawnTierState = { basicCount: 0, basicTarget: randomBasicTarget(), extraCount: 0, extraTarget: randomExtraTarget() };
