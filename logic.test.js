@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame } from "./logic.js";
 
 describe("hit", () => {
   it("is true when within threshold", () => {
@@ -104,5 +104,21 @@ describe("advanceSpawnTier", () => {
     }
     // basicTarget=3: basic,basic,extra(reset->4) / basic,basic,basic,tank(extraTarget=2 hit)
     expect(tiers).toEqual(["basic", "basic", "extra", "basic", "basic", "basic", "tank"]);
+  });
+});
+
+describe("aimFrame", () => {
+  it("maps the 4 native (right-side) cardinal/diagonal directions with no flip", () => {
+    expect(aimFrame(0, -1)).toEqual({ frame: 0, flip: 1 }); // N
+    expect(aimFrame(1, -1)).toEqual({ frame: 2, flip: 1 }); // NE
+    expect(aimFrame(1, 0)).toEqual({ frame: 4, flip: 1 }); // E
+    expect(aimFrame(1, 1)).toEqual({ frame: 6, flip: 1 }); // SE
+    expect(aimFrame(0, 1)).toEqual({ frame: 8, flip: 1 }); // S
+  });
+
+  it("mirrors the right-side frames for the 3 left-side directions", () => {
+    expect(aimFrame(-1, 1)).toEqual({ frame: 6, flip: -1 }); // SW mirrors SE
+    expect(aimFrame(-1, 0)).toEqual({ frame: 4, flip: -1 }); // W mirrors E
+    expect(aimFrame(-1, -1)).toEqual({ frame: 2, flip: -1 }); // NW mirrors NE
   });
 });

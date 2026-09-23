@@ -63,3 +63,17 @@ export function advanceSpawnTier(state, nextBasicTarget, nextExtraTarget) {
   extraTarget = nextExtraTarget;
   return { tier: "tank", state: { basicCount, basicTarget, extraCount, extraTarget } };
 }
+
+// Maps an aim direction to a frame index + horizontal flip for a 9-frame
+// weapon rotation strip that only covers up(0) -> right(4) -> down(8) - the
+// left half (NW/W/SW) reuses the right half's frames mirrored, since the
+// source art only draws one side. Compass order matches atan2's winding
+// (0=E, going clockwise in screen space where +y is down).
+const AIM_FRAME_BY_COMPASS = [4, 6, 8, 6, 4, 2, 0, 2]; // E,SE,S,SW,W,NW,N,NE
+const AIM_FLIP_BY_COMPASS = [1, 1, 1, -1, -1, -1, 1, 1];
+
+export function aimFrame(dirX, dirY) {
+  const angle = Math.atan2(dirY, dirX);
+  const compass = Math.round(angle / (Math.PI / 4)) & 7;
+  return { frame: AIM_FRAME_BY_COMPASS[compass], flip: AIM_FLIP_BY_COMPASS[compass] };
+}

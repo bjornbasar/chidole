@@ -1,4 +1,4 @@
-import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame } from "./logic.js";
 
 // --- Setup ---
 const canvas = document.getElementById("game");
@@ -44,6 +44,10 @@ const playerSprites = {
 for (const s of Object.values(playerSprites)) {
   s.img.onload = () => { s.loaded = true; };
 }
+
+const weaponSprite = loadSprite("assets/weapon1.png", 9);
+weaponSprite.img.onload = () => { weaponSprite.loaded = true; };
+const WEAPON_OFFSET = 4; // px from player center, along the aim direction
 
 const playerDeathSprites = {
   down: loadSprite("assets/player_death_down.png", 4),
@@ -122,6 +126,14 @@ function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120, flip = 1) {
   if (!sprite.loaded) return;
   const { frameW, frameH, frameCount } = sprite;
   const frame = Math.floor(elapsedMs / frameDurationMs) % frameCount;
+  drawSpriteFrame(sprite, frame, x, y, flip);
+}
+
+// Draws one explicit frame (no time-based animation) — used for sprites whose
+// frame is chosen by state (aim direction, a held flinch pose) rather than elapsed time.
+function drawSpriteFrame(sprite, frame, x, y, flip = 1) {
+  if (!sprite.loaded) return;
+  const { frameW, frameH } = sprite;
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(flip, 1);
@@ -140,6 +152,7 @@ function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120, flip = 1) {
 const player = { x: 0, y: 0 };
 let facing = "down"; // "down" | "up" | "side" — holds last direction while idle
 let facingFlip = 1; // 1 = facing right, -1 = mirrored (facing left)
+let aimDir = { x: 0, y: 1 }; // weapon aim direction — holds last target direction, not movement
 let playerDying = false;
 let playerDeathStart = 0;
 let playerHitFlashUntil = 0;
@@ -251,15 +264,21 @@ function update(dt, elapsedMs) {
     }
   }
 
-  // auto-fire at the nearest enemy — always on, no button, Survivor.io-style
+  // aim tracks the nearest enemy every frame (for weapon rendering), independent
+  // of the fire cooldown below — holds its last direction when nothing's in range
+  const targetI = nearestIndex(player.x, player.y, enemies);
+  if (targetI !== -1) {
+    aimDir = direction(player.x, player.y, enemies[targetI].x, enemies[targetI].y);
+  }
+
+  // auto-fire at the nearest enemy — always on, no button, Survivor.io-style.
+  // Bullets originate from the weapon's offset position, not the player's center.
   fireAccum += dt * 1000;
-  if (fireAccum >= FIRE_INTERVAL) {
-    const targetI = nearestIndex(player.x, player.y, enemies);
-    if (targetI !== -1) {
-      fireAccum = 0;
-      const dir = direction(player.x, player.y, enemies[targetI].x, enemies[targetI].y);
-      bullets.push({ x: player.x, y: player.y, vx: dir.x * BULLET_SPEED, vy: dir.y * BULLET_SPEED });
-    }
+  if (fireAccum >= FIRE_INTERVAL && targetI !== -1) {
+    fireAccum = 0;
+    const weaponX = player.x + aimDir.x * WEAPON_OFFSET;
+    const weaponY = player.y + aimDir.y * WEAPON_OFFSET;
+    bullets.push({ x: weaponX, y: weaponY, vx: aimDir.x * BULLET_SPEED, vy: aimDir.y * BULLET_SPEED });
   }
 
   // bullets travel in their fired direction, despawn once off-viewport
@@ -366,6 +385,11 @@ function draw(elapsedMs) {
     } else {
       drawSprite(playerSprites[facing], canvas.width / 2, canvas.height / 2, elapsedMs, 120, facingFlip);
     }
+    // weapon renders offset from the player, facing the aim direction
+    const { frame, flip } = aimFrame(aimDir.x, aimDir.y);
+    const wx = canvas.width / 2 + aimDir.x * WEAPON_OFFSET;
+    const wy = canvas.height / 2 + aimDir.y * WEAPON_OFFSET;
+    drawSpriteFrame(weaponSprite, frame, wx, wy, flip);
     ctx.globalAlpha = 1;
   }
 }
@@ -390,6 +414,7 @@ function startGame() {
   player.y = 0;
   facing = "down";
   facingFlip = 1;
+  aimDir = { x: 0, y: 1 };
   playerDying = false;
   playerHitFlashUntil = 0;
   playerInvulnUntil = 0;
