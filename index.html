@@ -36,7 +36,10 @@
   /* XP bar's track is precomposed (cap+stretched-middle+cap) at build time,
      so it's back to the same same-size back+fill pattern as the HP bars. */
   .xpbar { width: 90px; height: 32px; }
-  .xpbar img { width: 90px; height: 32px; }
+  .xpbar img.frame { width: 90px; height: 32px; }
+  /* fill sits inside the track's actual inner channel (found by scanning the
+     middle tile's banding), not the full cap height/width */
+  #xpFill { left: 7px; top: 8px; width: 76px; height: 16px; }
   /* health bar floats directly above the player, who is always screen-centered */
   .healthbar.above-player {
     position: absolute; left: 50%; top: 50%;
@@ -76,7 +79,7 @@
       <span>SCORE: <span id="score">0</span></span>
       <span>LV <span id="level">1</span></span>
       <span class="bar xpbar">
-        <img src="assets/xpbar_back.png" alt="">
+        <img src="assets/xpbar_back.png" class="frame" alt="">
         <img src="assets/xpbar_yellow.png" id="xpFill" alt="">
       </span>
     </div>
