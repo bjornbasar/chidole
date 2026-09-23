@@ -31,6 +31,8 @@ function loadSprite(src, frameCount, frameW = FRAME, frameH = FRAME) {
 }
 const sprites = {
   projectile: loadSprite("assets/projectile.png", 1, 10, 10),
+  hpBarBack: loadSprite("assets/hpbar_back.png", 1, 16, 2),
+  hpBarRed: loadSprite("assets/hpbar_red.png", 1, 16, 2),
 };
 for (const s of Object.values(sprites)) {
   s.img.onload = () => { s.loaded = true; };
@@ -160,6 +162,13 @@ function drawSpriteFrame(sprite, frame, x, y, flip = 1, scale = 1) {
     -frameW / 2, -frameH / 2, frameW, frameH
   );
   ctx.restore();
+}
+
+// Small floating bar (back plate + proportional fill), drawn at an explicit
+// pixel size — used for enemy HP bars above multi-hit enemies.
+function drawBar(backSprite, fillSprite, x, y, w, h, frac) {
+  if (backSprite.loaded) ctx.drawImage(backSprite.img, x - w / 2, y, w, h);
+  if (fillSprite.loaded && frac > 0) ctx.drawImage(fillSprite.img, x - w / 2, y, w * frac, h);
 }
 
 // --- Play area ---
@@ -422,6 +431,10 @@ function draw(elapsedMs) {
       drawSprite(enemyDeathSprites[e.typeIndex], s.x, s.y, 0); // frame 0 = flinch pose, held static
     } else {
       drawSprite(enemySprites[e.typeIndex], s.x, s.y, elapsedMs);
+    }
+    const maxHp = ENEMY_STATS[e.typeIndex].hp;
+    if (!e.dying && maxHp > 1) {
+      drawBar(sprites.hpBarBack, sprites.hpBarRed, s.x, s.y - FRAME / 2 - 6, 24, 4, e.hp / maxHp);
     }
   }
   // always screen-centered; sprite/flip follow the last movement direction
