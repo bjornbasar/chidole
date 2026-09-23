@@ -16,6 +16,7 @@
     -webkit-user-select: none; user-select: none;
   }
   #wrap { position: relative; }
+  #stage { position: relative; display: block; }
   canvas {
     display: block; border: 1px solid #1a1a2e; image-rendering: pixelated;
     cursor: url("assets/cursor.png") 0 0, auto;
@@ -26,12 +27,17 @@
     color: #8af; font-size: 14px;
     padding: 4px 8px;
   }
-  .healthbar { position: relative; display: inline-block; width: 96px; height: 12px; }
-  .healthbar img {
+  .bar { position: relative; display: inline-block; width: 96px; height: 12px; }
+  .bar img {
     position: absolute; top: 0; left: 0; width: 96px; height: 12px;
     image-rendering: pixelated;
   }
-  #hpFill { transform-origin: left center; }
+  .bar img:last-child { transform-origin: left center; }
+  /* health bar floats directly above the player, who is always screen-centered */
+  .healthbar.above-player {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, calc(-50% - 32px));
+  }
   #overlay {
     position: absolute; inset: 0; display: flex; flex-direction: column;
     align-items: center; justify-content: center; color: #fff;
@@ -62,12 +68,18 @@
   <div id="wrap">
     <div id="hud">
       <span>SCORE: <span id="score">0</span></span>
-      <span class="healthbar">
+      <span class="bar">
+        <img src="assets/hpbar_back.png" alt="">
+        <img src="assets/xpbar_yellow.png" id="xpFill" alt="">
+      </span>
+    </div>
+    <div id="stage">
+      <canvas id="game"></canvas>
+      <span class="bar healthbar above-player">
         <img src="assets/hpbar_back.png" alt="">
         <img src="assets/hpbar_red.png" id="hpFill" alt="">
       </span>
     </div>
-    <canvas id="game"></canvas>
     <div id="overlay">
       <div class="panel">
         <h1>CHIDOLE</h1>

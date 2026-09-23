@@ -9,6 +9,8 @@ ctx.imageSmoothingEnabled = false; // keep pixel art crisp, not blurred
 
 const scoreEl = document.getElementById("score");
 const hpFillEl = document.getElementById("hpFill");
+const xpFillEl = document.getElementById("xpFill");
+const XP_PER_LEVEL = 10; // placeholder curve — real leveling/threshold logic lands in #29
 const overlay = document.getElementById("overlay");
 const startBtn = document.getElementById("startBtn");
 
@@ -131,6 +133,10 @@ function toScreen(worldX, worldY) {
 
 function setLivesDisplay(n) {
   hpFillEl.style.transform = `scaleX(${Math.max(0, n) / MAX_LIVES})`;
+}
+
+function setXpDisplay(n) {
+  xpFillEl.style.transform = `scaleX(${(n % XP_PER_LEVEL) / XP_PER_LEVEL})`;
 }
 
 function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120, flip = 1, scale = 1) {
@@ -332,6 +338,7 @@ function update(dt, elapsedMs) {
     const orb = xpOrbs[i];
     if (!orb.collecting && hit(player.x, player.y, orb.x, orb.y, XP_PICKUP_RADIUS)) {
       xp += orb.value;
+      setXpDisplay(xp);
       orb.collecting = true;
       orb.collectStart = elapsedMs;
     }
@@ -473,6 +480,7 @@ function startGame() {
   lives = MAX_LIVES;
   scoreEl.textContent = score;
   setLivesDisplay(lives);
+  setXpDisplay(0);
   running = true;
   gameOver = false;
   startTime = performance.now();
