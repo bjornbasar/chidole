@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor } from "./logic.js";
 
 describe("hit", () => {
   it("is true when within threshold", () => {
@@ -120,5 +120,23 @@ describe("aimFrame", () => {
     expect(aimFrame(-1, -1)).toEqual({ frame: 6, flip: -1 }); // NW mirrors NE
     expect(aimFrame(-1, 0)).toEqual({ frame: 4, flip: -1 }); // W mirrors E
     expect(aimFrame(-1, 1)).toEqual({ frame: 2, flip: -1 }); // SW mirrors SE
+  });
+});
+
+describe("hpBarColor", () => {
+  it("is red at or below 25%", () => {
+    expect(hpBarColor(0)).toBe("red");
+    expect(hpBarColor(0.25)).toBe("red");
+  });
+
+  it("is yellow between 25% (exclusive) and 70% (inclusive)", () => {
+    expect(hpBarColor(0.26)).toBe("yellow");
+    expect(hpBarColor(0.5)).toBe("yellow");
+    expect(hpBarColor(0.7)).toBe("yellow");
+  });
+
+  it("is green above 70%", () => {
+    expect(hpBarColor(0.71)).toBe("green");
+    expect(hpBarColor(1)).toBe("green");
   });
 });

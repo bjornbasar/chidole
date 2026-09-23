@@ -1,4 +1,4 @@
-import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor } from "./logic.js";
 
 // --- Setup ---
 const canvas = document.getElementById("game");
@@ -134,7 +134,9 @@ function toScreen(worldX, worldY) {
 }
 
 function setLivesDisplay(n) {
-  hpFillEl.style.transform = `scaleX(${Math.max(0, n) / MAX_LIVES})`;
+  const frac = Math.max(0, n) / MAX_LIVES;
+  hpFillEl.style.transform = `scaleX(${frac})`;
+  hpFillEl.src = `assets/hpbar_${hpBarColor(frac)}.png`;
 }
 
 function setXpDisplay(n) {

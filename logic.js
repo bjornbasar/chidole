@@ -77,3 +77,10 @@ export function aimFrame(dirX, dirY) {
   const compass = Math.round(angle / (Math.PI / 4)) & 7;
   return { frame: AIM_FRAME_BY_COMPASS[compass], flip: AIM_FLIP_BY_COMPASS[compass] };
 }
+
+// HP bar color tier by remaining fraction: critical/mid/healthy.
+export function hpBarColor(frac) {
+  if (frac <= 0.25) return "red";
+  if (frac <= 0.70) return "yellow";
+  return "green";
+}
