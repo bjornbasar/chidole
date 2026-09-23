@@ -47,7 +47,7 @@ for (const s of Object.values(playerSprites)) {
 
 const weaponSprite = loadSprite("assets/weapon1.png", 9);
 weaponSprite.img.onload = () => { weaponSprite.loaded = true; };
-const WEAPON_OFFSET = HIT_RADIUS + 4; // 2-5px beyond the player's visible silhouette edge, not from dead-center
+const WEAPON_OFFSET = HIT_RADIUS + 8; // beyond the player's visible silhouette edge, not from dead-center
 
 const playerDeathSprites = {
   down: loadSprite("assets/player_death_down.png", 4),
