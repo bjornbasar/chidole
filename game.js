@@ -1,4 +1,4 @@
-import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor, xpThreshold } from "./logic.js";
 
 // --- Setup ---
 const canvas = document.getElementById("game");
@@ -10,7 +10,7 @@ ctx.imageSmoothingEnabled = false; // keep pixel art crisp, not blurred
 const scoreEl = document.getElementById("score");
 const hpFillEl = document.getElementById("hpFill");
 const xpFillEl = document.getElementById("xpFill");
-const XP_PER_LEVEL = 10; // placeholder curve — real leveling/threshold logic lands in #29
+const levelEl = document.getElementById("level");
 const overlay = document.getElementById("overlay");
 const startBtn = document.getElementById("startBtn");
 
@@ -18,7 +18,8 @@ const FRAME = 48; // all character/enemy sprite frames are 48x48px
 const TILE = 32; // location floor tile size
 const PLAYER_SPEED = 200; // px/sec
 const BULLET_SPEED = 400; // px/sec
-const FIRE_INTERVAL = 220; // ms between auto-fired shots
+const FIRE_INTERVAL_BASE = 220; // ms between auto-fired shots, before level-up effects
+const LEVEL_UP_FIRE_RATE_MUL = 0.9; // each level-up: 10% faster firing (placeholder effect, real skills replace this)
 const ENEMY_SPEED = 90; // px/sec
 const HIT_RADIUS = FRAME * 0.35; // approximates the sprites' visible silhouette, not their full padded frame
 const MAX_LIVES = 3;
@@ -140,7 +141,24 @@ function setLivesDisplay(n) {
 }
 
 function setXpDisplay(n) {
-  xpFillEl.style.transform = `scaleX(${(n % XP_PER_LEVEL) / XP_PER_LEVEL})`;
+  xpFillEl.style.transform = `scaleX(${n / xpThreshold(level)})`;
+}
+
+function setLevelDisplay() {
+  levelEl.textContent = level;
+}
+
+// Crosses as many level thresholds as the XP gain warrants (usually one, but
+// a big pickup could cross more), applying the placeholder fire-rate effect
+// each time. Real per-level choices replace this in the Skills stories.
+function checkLevelUp() {
+  while (xp >= xpThreshold(level)) {
+    xp -= xpThreshold(level);
+    level++;
+    fireInterval *= LEVEL_UP_FIRE_RATE_MUL;
+    setLevelDisplay();
+  }
+  setXpDisplay(xp);
 }
 
 function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120, flip = 1, scale = 1) {
@@ -189,6 +207,8 @@ let bullets = [];
 let enemies = [];
 let xpOrbs = [];
 let xp = 0;
+let level = 1;
+let fireInterval = FIRE_INTERVAL_BASE;
 let fireAccum = 0;
 let spawnAccum = 0;
 let spawnTierState = { basicCount: 0, basicTarget: randomBasicTarget(), extraCount: 0, extraTarget: randomExtraTarget() };
@@ -304,7 +324,7 @@ function update(dt, elapsedMs) {
   // auto-fire at the nearest enemy — always on, no button, Survivor.io-style.
   // Bullets originate from the weapon's offset position, not the player's center.
   fireAccum += dt * 1000;
-  if (fireAccum >= FIRE_INTERVAL && targetI !== -1) {
+  if (fireAccum >= fireInterval && targetI !== -1) {
     fireAccum = 0;
     const weaponX = player.x + aimDir.x * WEAPON_OFFSET;
     const weaponY = player.y + aimDir.y * WEAPON_OFFSET;
@@ -349,7 +369,7 @@ function update(dt, elapsedMs) {
     const orb = xpOrbs[i];
     if (!orb.collecting && hit(player.x, player.y, orb.x, orb.y, XP_PICKUP_RADIUS)) {
       xp += orb.value;
-      setXpDisplay(xp);
+      checkLevelUp();
       orb.collecting = true;
       orb.collectStart = elapsedMs;
     }
@@ -488,6 +508,8 @@ function startGame() {
   enemies = [];
   xpOrbs = [];
   xp = 0;
+  level = 1;
+  fireInterval = FIRE_INTERVAL_BASE;
   fireAccum = 0;
   spawnAccum = 0;
   spawnTierState = { basicCount: 0, basicTarget: randomBasicTarget(), extraCount: 0, extraTarget: randomExtraTarget() };
@@ -495,6 +517,7 @@ function startGame() {
   lives = MAX_LIVES;
   scoreEl.textContent = score;
   setLivesDisplay(lives);
+  setLevelDisplay();
   setXpDisplay(0);
   running = true;
   gameOver = false;

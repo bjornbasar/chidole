@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor, xpThreshold } from "./logic.js";
 
 describe("hit", () => {
   it("is true when within threshold", () => {
@@ -138,5 +138,13 @@ describe("hpBarColor", () => {
   it("is green above 70%", () => {
     expect(hpBarColor(0.71)).toBe("green");
     expect(hpBarColor(1)).toBe("green");
+  });
+});
+
+describe("xpThreshold", () => {
+  it("grows linearly with level", () => {
+    expect(xpThreshold(1)).toBe(10);
+    expect(xpThreshold(2)).toBe(20);
+    expect(xpThreshold(5)).toBe(50);
   });
 });

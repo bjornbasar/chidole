@@ -84,3 +84,9 @@ export function hpBarColor(frac) {
   if (frac <= 0.70) return "yellow";
   return "green";
 }
+
+// XP needed to advance FROM this level to the next — grows linearly so later
+// levels take progressively longer, simple placeholder curve (tunable later).
+export function xpThreshold(level) {
+  return level * 10;
+}
