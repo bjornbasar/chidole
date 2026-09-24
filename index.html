@@ -63,14 +63,17 @@
   #overlay h1 { font-size: 28px; color: #206; margin-bottom: 8px; letter-spacing: 4px; }
   #overlay p { font-size: 14px; color: #206; margin-bottom: 16px; text-align: center; padding: 0 16px; }
   #overlay .score-display { font-size: 24px; color: #a30; margin-bottom: 16px; }
-  #overlay button {
-    width: 128px; height: 128px; font-size: 16px; font-family: inherit;
+  #weaponPicker { display: flex; gap: 12px; }
+  #weaponPicker button {
+    width: 76px; height: 76px; font-size: 11px; font-family: inherit;
     color: #fff; text-shadow: 1px 1px 2px #002;
     border: none; background: url("assets/button_normal.png") center / contain no-repeat;
-    image-rendering: pixelated; cursor: pointer; letter-spacing: 2px;
+    image-rendering: pixelated; cursor: pointer; letter-spacing: 1px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   }
-  #overlay button:hover { background-image: url("assets/button_light.png"); }
-  #overlay button:active { background-image: url("assets/button_dark.png"); }
+  #weaponPicker button img { width: 64px; height: 64px; image-rendering: pixelated; }
+  #weaponPicker button:hover { background-image: url("assets/button_light.png"); }
+  #weaponPicker button:active { background-image: url("assets/button_dark.png"); }
 </style>
 </head>
 <body>
@@ -93,8 +96,12 @@
     <div id="overlay">
       <div class="panel">
         <h1>CHIDOLE</h1>
-        <p>Arrow keys / WASD, or click-and-hold toward a direction, to move — auto-fires at the nearest enemy</p>
-        <button id="startBtn">START</button>
+        <p>Arrow keys / WASD, or click-and-hold toward a direction, to move — auto-fires at the nearest enemy. Choose a weapon to start:</p>
+        <div id="weaponPicker">
+          <button class="weapon-choice" data-weapon="1"><img src="assets/icon1.png" alt=""><span>Bullet</span></button>
+          <button class="weapon-choice" data-weapon="3"><img src="assets/icon3.png" alt=""><span>Shotgun</span></button>
+          <button class="weapon-choice" data-weapon="5"><img src="assets/icon5.png" alt=""><span>Blaster</span></button>
+        </div>
       </div>
     </div>
   </div>

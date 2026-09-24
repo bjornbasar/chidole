@@ -1,4 +1,4 @@
-import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor, xpThreshold, pickFromPool, fireIntervalFor, quadrantBucket } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor, xpThreshold, fireIntervalFor, quadrantBucket } from "./logic.js";
 
 // --- Setup ---
 const canvas = document.getElementById("game");
@@ -12,7 +12,7 @@ const hpFillEl = document.getElementById("hpFill");
 const xpFillEl = document.getElementById("xpFill");
 const levelEl = document.getElementById("level");
 const overlay = document.getElementById("overlay");
-const startBtn = document.getElementById("startBtn");
+const weaponChoiceButtons = document.querySelectorAll(".weapon-choice");
 
 const FRAME = 48; // all character/enemy sprite frames are 48x48px
 const TILE = 32; // location floor tile size
@@ -65,11 +65,12 @@ function effectSprites(family) {
   return ["0", "45"].map((angle) => loadSprite(`assets/effect${family}_${angle}.png`, 6, 96, 96));
 }
 const WEAPON_DATA = {
-  1: { sprite: loadSprite("assets/weapon1.png", 9), effect: effectSprites(1), range: 12 * RANGE_UNIT_PX, rate: 1 },
-  3: { sprite: loadSprite("assets/weapon3.png", 9), effect: effectSprites(4), range: 6 * RANGE_UNIT_PX, rate: 0.7 },
-  5: { sprite: loadSprite("assets/weapon5.png", 9), effect: effectSprites(3), range: 10 * RANGE_UNIT_PX, rate: 1 },
+  1: { sprite: loadSprite("assets/weapon1.png", 9), effect: effectSprites(1), range: 8 * RANGE_UNIT_PX, rate: 1 },
+  3: { sprite: loadSprite("assets/weapon3.png", 9), effect: effectSprites(4), range: 5 * RANGE_UNIT_PX, rate: 0.7 },
+  5: { sprite: loadSprite("assets/weapon5.png", 9), effect: effectSprites(3), range: 7 * RANGE_UNIT_PX, rate: 1 },
 };
 const STARTER_POOL = [1, 3, 5];
+const WEAPON_SLOT_CAP = 4;
 for (const w of Object.values(WEAPON_DATA)) {
   for (const s of [w.sprite, ...w.effect]) {
     s.img.onload = () => { s.loaded = true; };
@@ -184,7 +185,7 @@ function checkLevelUp() {
   while (xp >= xpThreshold(level)) {
     xp -= xpThreshold(level);
     level++;
-    fireInterval *= LEVEL_UP_FIRE_RATE_MUL;
+    fireRateMul *= LEVEL_UP_FIRE_RATE_MUL;
     setLevelDisplay();
   }
   setXpDisplay(xp);
@@ -250,14 +251,17 @@ let playerDying = false;
 let playerDeathStart = 0;
 let playerHitFlashUntil = 0;
 let playerInvulnUntil = 0;
-let activeWeapon = WEAPON_DATA[STARTER_POOL[0]]; // replaced with the rolled starter in startGame()
-let muzzleFlashStart = -Infinity; // just a timer — draw() derives position/sprite/direction fresh, so it can't drift from the weapon or disagree with its current aim
+// Runtime-equipped weapons — static config (sprite/effect/range/rate) stays
+// in WEAPON_DATA, keyed by id; this holds only per-instance state. Up to
+// WEAPON_SLOT_CAP entries (#34's 4-slot cap) — only ever 1 in practice until
+// #31 (level-up "new weapon" pick) ships, but each fires independently on
+// its own cooldown, gated by its own range, all sharing the same aimDir/target.
+let equippedWeapons = [];
+let fireRateMul = 1; // compounds down each level-up (#'s were baked into a single fireInterval before multiple weapons existed)
 let enemies = [];
 let xpOrbs = [];
 let xp = 0;
 let level = 1;
-let fireInterval = FIRE_INTERVAL_BASE;
-let fireAccum = 0;
 let spawnAccum = 0;
 let spawnTierState = { basicCount: 0, basicTarget: randomBasicTarget(), extraCount: 0, extraTarget: randomExtraTarget() };
 
@@ -400,15 +404,21 @@ function update(dt, elapsedMs) {
     aimDir = direction(player.x, player.y, enemies[targetI].x, enemies[targetI].y);
   }
 
-  // auto-fire at the nearest enemy — always on, no button, Survivor.io-style.
-  // All 3 starter weapons are hitscan/effect-only (#30): no travel, resolves
-  // instantly, gated by the weapon's own range (previously missing entirely).
-  fireAccum += dt * 1000;
-  const inRange = targetI !== -1 && hit(player.x, player.y, enemies[targetI].x, enemies[targetI].y, activeWeapon.range);
-  if (fireAccum >= fireInterval && inRange) {
-    fireAccum = 0;
-    muzzleFlashStart = elapsedMs; // draw() re-derives position/direction fresh every frame — see its own comment
-    damageEnemy(targetI, elapsedMs);
+  // auto-fire at the shared nearest target — always on, no button,
+  // Survivor.io-style. Each equipped weapon has its own cooldown/range gate
+  // (#35) but they all aim at the same target, not independent ones. All 3
+  // starter weapons are hitscan/effect-only (#30): no travel, resolves
+  // instantly.
+  for (const w of equippedWeapons) {
+    w.fireAccum += dt * 1000;
+    const data = WEAPON_DATA[w.id];
+    const inRange = targetI !== -1 && hit(player.x, player.y, enemies[targetI].x, enemies[targetI].y, data.range);
+    const interval = fireIntervalFor(FIRE_INTERVAL_BASE, data.rate) * fireRateMul;
+    if (w.fireAccum >= interval && inRange) {
+      w.fireAccum = 0;
+      w.muzzleFlashStart = elapsedMs; // draw() re-derives position/direction fresh every frame — see its own comment
+      damageEnemy(targetI, elapsedMs);
+    }
   }
 
   // enemies spawn just outside a random edge of the arena and home toward the player
@@ -515,18 +525,23 @@ function draw(elapsedMs) {
     } else {
       drawSprite(playerSprites[facing], canvas.width / 2, canvas.height / 2, elapsedMs, 120, facingFlip);
     }
-    // weapon renders offset from the player, facing the aim direction
+    // weapons render offset from the player, facing the shared aim direction —
+    // all equipped weapons draw at the same spot for now (#35), since there's
+    // nothing to visually fan out until #31 can actually equip a 2nd one.
     const { frame, flip } = aimFrame(aimDir.x, aimDir.y);
     const wx = canvas.width / 2 + aimDir.x * WEAPON_OFFSET;
     const wy = canvas.height / 2 + aimDir.y * WEAPON_OFFSET;
-    drawSpriteFrame(activeWeapon.sprite, frame, wx, wy, flip);
-    // muzzle flash draws at the SAME (wx,wy) using the CURRENT aim direction,
-    // not a position/direction captured at fire time — so it can never drift
-    // off the moving weapon or disagree with its current pose (previously a
-    // separately-tracked world-space entity, which did both).
-    if (elapsedMs - muzzleFlashStart < MUZZLE_EFFECT_TOTAL_MS) {
-      const { index, flipX, flipY, transpose } = quadrantBucket(aimDir.x, aimDir.y);
-      drawSprite(activeWeapon.effect[index], wx, wy, elapsedMs - muzzleFlashStart, MUZZLE_EFFECT_FRAME_MS, flipX, 1, flipY, MUZZLE_EFFECT_ORIGIN[index], transpose);
+    for (const w of equippedWeapons) {
+      const data = WEAPON_DATA[w.id];
+      drawSpriteFrame(data.sprite, frame, wx, wy, flip);
+      // muzzle flash draws at the SAME (wx,wy) using the CURRENT aim direction,
+      // not a position/direction captured at fire time — so it can never drift
+      // off the moving weapon or disagree with its current pose (previously a
+      // separately-tracked world-space entity, which did both).
+      if (elapsedMs - w.muzzleFlashStart < MUZZLE_EFFECT_TOTAL_MS) {
+        const { index, flipX, flipY, transpose } = quadrantBucket(aimDir.x, aimDir.y);
+        drawSprite(data.effect[index], wx, wy, elapsedMs - w.muzzleFlashStart, MUZZLE_EFFECT_FRAME_MS, flipX, 1, flipY, MUZZLE_EFFECT_ORIGIN[index], transpose);
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -544,9 +559,11 @@ function gameLoop(ts) {
 }
 
 // --- Start / game over ---
-startBtn.addEventListener("click", startGame);
+for (const btn of weaponChoiceButtons) {
+  btn.addEventListener("click", () => startGame(Number(btn.dataset.weapon)));
+}
 
-function startGame() {
+function startGame(starterId) {
   overlay.classList.add("hidden");
   player.x = 0;
   player.y = 0;
@@ -556,15 +573,12 @@ function startGame() {
   playerDying = false;
   playerHitFlashUntil = 0;
   playerInvulnUntil = 0;
-  const starterId = pickFromPool(STARTER_POOL, Math.random());
-  activeWeapon = WEAPON_DATA[starterId];
-  muzzleFlashStart = -Infinity;
+  equippedWeapons = [{ id: starterId, fireAccum: 0, muzzleFlashStart: -Infinity }];
+  fireRateMul = 1;
   enemies = [];
   xpOrbs = [];
   xp = 0;
   level = 1;
-  fireInterval = fireIntervalFor(FIRE_INTERVAL_BASE, activeWeapon.rate);
-  fireAccum = 0;
   spawnAccum = 0;
   spawnTierState = { basicCount: 0, basicTarget: randomBasicTarget(), extraCount: 0, extraTarget: randomExtraTarget() };
   score = 0;
@@ -584,7 +598,6 @@ function endGame() {
   running = false;
   gameOver = true;
   overlay.querySelector("h1").textContent = "GAME OVER";
-  overlay.querySelector("p").textContent = `Final score: ${score}`;
-  startBtn.textContent = "RETRY";
+  overlay.querySelector("p").textContent = `Final score: ${score} — choose a weapon to retry:`;
   overlay.classList.remove("hidden");
 }
