@@ -1,4 +1,4 @@
-import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor, xpThreshold, fireIntervalFor, quadrantBucket } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor, xpThreshold, pickDistinct, fireIntervalFor, quadrantBucket } from "./logic.js";
 
 // --- Setup ---
 const canvas = document.getElementById("game");
@@ -13,13 +13,15 @@ const xpFillEl = document.getElementById("xpFill");
 const levelEl = document.getElementById("level");
 const overlay = document.getElementById("overlay");
 const weaponChoiceButtons = document.querySelectorAll(".weapon-choice");
+const levelUpOverlay = document.getElementById("levelUpOverlay");
+const levelUpChoicesEl = document.getElementById("levelUpChoices");
 
 const FRAME = 48; // all character/enemy sprite frames are 48x48px
 const TILE = 32; // location floor tile size
 const PLAYER_SPEED = 200; // px/sec
 const FIRE_INTERVAL_BASE = 220; // ms between auto-fired shots, before level-up effects
 const RANGE_UNIT_PX = 24; // scales #30's abstract Range column to world px — placeholder, tune after visual testing
-const LEVEL_UP_FIRE_RATE_MUL = 0.9; // each level-up: 10% faster firing (placeholder effect, real skills replace this)
+const WEAPON_UPGRADE_RATE_MUL = 0.9; // each upgrade: weapon fires 10% faster, compounding (#32's table value)
 const ENEMY_SPEED = 90; // px/sec
 const HIT_RADIUS = FRAME * 0.35; // approximates the sprites' visible silhouette, not their full padded frame
 const MAX_LIVES = 3;
@@ -69,6 +71,9 @@ const WEAPON_DATA = {
   3: { sprite: loadSprite("assets/weapon3.png", 9), effect: effectSprites(4), range: 5 * RANGE_UNIT_PX, rate: 0.7 },
   5: { sprite: loadSprite("assets/weapon5.png", 9), effect: effectSprites(3), range: 7 * RANGE_UNIT_PX, rate: 1 },
 };
+// Display names for the level-up choice UI (#31) — same names the starter
+// picker's static HTML already hardcodes, matching #30's table.
+const WEAPON_NAMES = { 1: "Bullet", 3: "Shotgun", 5: "Blaster" };
 const STARTER_POOL = [1, 3, 5];
 const WEAPON_SLOT_CAP = 4;
 for (const w of Object.values(WEAPON_DATA)) {
@@ -179,16 +184,73 @@ function setLevelDisplay() {
 }
 
 // Crosses as many level thresholds as the XP gain warrants (usually one, but
-// a big pickup could cross more), applying the placeholder fire-rate effect
-// each time. Real per-level choices replace this in the Skills stories.
-function checkLevelUp() {
+// a big pickup could cross more). Each threshold crossed queues a choice
+// (#31) rather than applying an effect directly — maybeOpenLevelUpChoice()
+// pops one at a time, chaining through the queue before resuming play.
+function checkLevelUp(elapsedMs) {
   while (xp >= xpThreshold(level)) {
     xp -= xpThreshold(level);
     level++;
-    fireRateMul *= LEVEL_UP_FIRE_RATE_MUL;
+    pendingLevelUps++;
     setLevelDisplay();
   }
   setXpDisplay(xp);
+  maybeOpenLevelUpChoice(elapsedMs);
+}
+
+// Pops one pending level-up (if any, and not already showing one) into a
+// 3-choice pool: upgrade an equipped weapon's rate, or acquire a new one
+// (only offered under the slot cap). Pauses play for the duration — see
+// pauseStartElapsed's own comment for how resuming un-skews every timer.
+function maybeOpenLevelUpChoice(elapsedMs) {
+  if (paused || pendingLevelUps <= 0) return;
+  pendingLevelUps--;
+  paused = true;
+  pauseStartElapsed = elapsedMs;
+
+  const pool = equippedWeapons.map((w) => ({ kind: "upgrade", id: w.id }));
+  if (equippedWeapons.length < WEAPON_SLOT_CAP) {
+    const equippedIds = new Set(equippedWeapons.map((w) => w.id));
+    for (const id of Object.keys(WEAPON_DATA).map(Number)) {
+      if (!equippedIds.has(id)) pool.push({ kind: "new", id });
+    }
+  }
+  const choices = pickDistinct(pool, [Math.random(), Math.random(), Math.random()]);
+
+  levelUpChoicesEl.innerHTML = "";
+  for (const choice of choices) {
+    const btn = document.createElement("button");
+    btn.className = "choice-btn";
+    const img = document.createElement("img");
+    img.src = `assets/icon${choice.id}.png`;
+    img.alt = "";
+    const tag = document.createElement("span");
+    tag.className = "choice-tag";
+    tag.textContent = choice.kind === "upgrade" ? "UPGRADE" : "NEW";
+    const name = document.createElement("span");
+    name.textContent = WEAPON_NAMES[choice.id];
+    btn.append(img, tag, name);
+    btn.addEventListener("click", () => applyLevelUpChoice(choice));
+    levelUpChoicesEl.appendChild(btn);
+  }
+  levelUpOverlay.classList.remove("hidden");
+}
+
+function applyLevelUpChoice(choice) {
+  if (choice.kind === "upgrade") {
+    equippedWeapons.find((w) => w.id === choice.id).upgradeLevel++;
+  } else {
+    equippedWeapons.push({ id: choice.id, fireAccum: 0, muzzleFlashStart: -Infinity, upgradeLevel: 1 });
+  }
+  levelUpOverlay.classList.add("hidden");
+  // shift startTime forward by exactly how long the pause lasted, so
+  // elapsedMs resumes at pauseStartElapsed instead of jumping ahead —
+  // otherwise every wall-clock timer (muzzle flash, deaths, invuln) would
+  // appear to fast-forward the instant play resumes.
+  const resumeElapsed = performance.now() - startTime;
+  startTime += resumeElapsed - pauseStartElapsed;
+  paused = false;
+  maybeOpenLevelUpChoice(pauseStartElapsed);
 }
 
 function drawSprite(sprite, x, y, elapsedMs, frameDurationMs = 120, flip = 1, scale = 1, flipY = 1, origin = null, transpose = false) {
@@ -257,11 +319,13 @@ let playerInvulnUntil = 0;
 // #31 (level-up "new weapon" pick) ships, but each fires independently on
 // its own cooldown, gated by its own range, all sharing the same aimDir/target.
 let equippedWeapons = [];
-let fireRateMul = 1; // compounds down each level-up (#'s were baked into a single fireInterval before multiple weapons existed)
 let enemies = [];
 let xpOrbs = [];
 let xp = 0;
 let level = 1;
+let pendingLevelUps = 0; // thresholds crossed but not yet resolved into a choice (#31)
+let paused = false; // true while a level-up choice overlay is up — update() skipped, draw() isn't
+let pauseStartElapsed = 0; // elapsedMs at the moment paused — startTime shifts by the pause duration on resume, so every wall-clock timer (muzzle flash, deaths, invuln) picks up exactly where it left off
 let spawnAccum = 0;
 let spawnTierState = { basicCount: 0, basicTarget: randomBasicTarget(), extraCount: 0, extraTarget: randomExtraTarget() };
 
@@ -413,7 +477,7 @@ function update(dt, elapsedMs) {
     w.fireAccum += dt * 1000;
     const data = WEAPON_DATA[w.id];
     const inRange = targetI !== -1 && hit(player.x, player.y, enemies[targetI].x, enemies[targetI].y, data.range);
-    const interval = fireIntervalFor(FIRE_INTERVAL_BASE, data.rate) * fireRateMul;
+    const interval = fireIntervalFor(FIRE_INTERVAL_BASE, data.rate) * WEAPON_UPGRADE_RATE_MUL ** (w.upgradeLevel - 1);
     if (w.fireAccum >= interval && inRange) {
       w.fireAccum = 0;
       w.muzzleFlashStart = elapsedMs; // draw() re-derives position/direction fresh every frame — see its own comment
@@ -449,7 +513,7 @@ function update(dt, elapsedMs) {
     const orb = xpOrbs[i];
     if (!orb.collecting && hit(player.x, player.y, orb.x, orb.y, XP_PICKUP_RADIUS)) {
       xp += orb.value;
-      checkLevelUp();
+      checkLevelUp(elapsedMs);
       orb.collecting = true;
       orb.collectStart = elapsedMs;
     }
@@ -553,7 +617,7 @@ function gameLoop(ts) {
   const dt = Math.min((ts - lastTs) / 1000, 0.1); // cap to avoid a huge first-frame jump
   lastTs = ts;
   const elapsedMs = ts - startTime;
-  update(dt, elapsedMs);
+  if (!paused) update(dt, elapsedMs);
   draw(elapsedMs);
   requestAnimationFrame(gameLoop);
 }
@@ -573,12 +637,14 @@ function startGame(starterId) {
   playerDying = false;
   playerHitFlashUntil = 0;
   playerInvulnUntil = 0;
-  equippedWeapons = [{ id: starterId, fireAccum: 0, muzzleFlashStart: -Infinity }];
-  fireRateMul = 1;
+  equippedWeapons = [{ id: starterId, fireAccum: 0, muzzleFlashStart: -Infinity, upgradeLevel: 1 }];
   enemies = [];
   xpOrbs = [];
   xp = 0;
   level = 1;
+  pendingLevelUps = 0;
+  paused = false;
+  levelUpOverlay.classList.add("hidden");
   spawnAccum = 0;
   spawnTierState = { basicCount: 0, basicTarget: randomBasicTarget(), extraCount: 0, extraTarget: randomExtraTarget() };
   score = 0;

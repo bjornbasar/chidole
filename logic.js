@@ -107,6 +107,23 @@ export function pickFromPool(pool, randomFloat) {
   return pool[Math.floor(randomFloat * pool.length)];
 }
 
+// Picks randomFloats.length distinct items from pool (sampling without
+// replacement), via repeated pickFromPool against a shrinking working copy —
+// same pre-rolled-randomness testability pattern. Stops early (returns
+// fewer than requested) if the pool runs out first, rather than padding
+// with duplicates.
+export function pickDistinct(pool, randomFloats) {
+  const remaining = [...pool];
+  const picks = [];
+  for (const randomFloat of randomFloats) {
+    if (remaining.length === 0) break;
+    const index = Math.floor(randomFloat * remaining.length);
+    picks.push(remaining[index]);
+    remaining.splice(index, 1);
+  }
+  return picks;
+}
+
 // Fire-interval multiplier contract: higher rate = fires more often, so a
 // higher rate must SHORTEN the interval (divide, not multiply).
 export function fireIntervalFor(baseMs, rate) {

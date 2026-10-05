@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor, xpThreshold, pickFromPool, fireIntervalFor, quadrantBucket } from "./logic.js";
+import { hit, getSpawnInterval, direction, nearestIndex, advanceSpawnTier, aimFrame, hpBarColor, xpThreshold, pickFromPool, pickDistinct, fireIntervalFor, quadrantBucket } from "./logic.js";
 
 describe("hit", () => {
   it("is true when within threshold", () => {
@@ -160,6 +160,29 @@ describe("pickFromPool", () => {
 
   it("picks the middle entry mid-range", () => {
     expect(pickFromPool([1, 3, 5], 0.5)).toBe(3);
+  });
+});
+
+describe("pickDistinct", () => {
+  it("picks N distinct items, none repeated", () => {
+    const picks = pickDistinct(["a", "b", "c", "d", "e"], [0, 0, 0]);
+    expect(picks).toHaveLength(3);
+    expect(new Set(picks).size).toBe(3);
+  });
+
+  it("is capped by the number of random floats given, not the pool size", () => {
+    expect(pickDistinct(["a", "b", "c", "d", "e"], [0.1, 0.9])).toHaveLength(2);
+  });
+
+  it("returns whatever's available when the pool is smaller than requested", () => {
+    const picks = pickDistinct(["a", "b"], [0, 0, 0]);
+    expect(picks).toHaveLength(2);
+    expect(new Set(picks)).toEqual(new Set(["a", "b"]));
+  });
+
+  it("picks every pool item exactly once when asked for the whole pool", () => {
+    const picks = pickDistinct(["a", "b", "c"], [0, 0.5, 0.99]);
+    expect(new Set(picks)).toEqual(new Set(["a", "b", "c"]));
   });
 });
 
